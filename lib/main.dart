@@ -31,6 +31,8 @@ class MyHomePage extends StatefulWidget {
 class _MyHomePageState extends State<MyHomePage> {
   bool _isInterstitialLoaded = false;
   bool _isRewardedLoaded = false;
+  bool _isInterstitialLoading = false;
+  bool _isRewardedLoading = false;
   int _coins = 0;
 
   @override
@@ -42,28 +44,29 @@ class _MyHomePageState extends State<MyHomePage> {
   Future<void> _initUnityAds() async {
     await UnityAds.init(
       gameId: '5859176',
-      testMode: false,
-      onComplete: () {
-        print('Initialization Complete');
-        _loadInterstitialAd();
-        _loadRewardedAd();
-      },
+      testMode: false, // Disabled test mode for real ads
+      onComplete: () => print('Initialization Complete'),
       onFailed: (error, message) => print('Initialization Failed: $message'),
     );
   }
 
   void _loadInterstitialAd() {
-    UnityAds.load(
-      placementId: 'Interstitial_iOS',
-      onComplete: (placementId) {
-        setState(() => _isInterstitialLoaded = true);
-        print('Interstitial Ad Loaded');
-      },
-      onFailed: (placementId, error, message) {
-        print('Interstitial Load Failed: $message');
-        setState(() => _isInterstitialLoaded = false);
-      },
-    );
+    if (!_isInterstitialLoading) {
+      setState(() => _isInterstitialLoading = true);
+      UnityAds.load(
+        placementId: 'Interstitial_iOS',
+        onComplete: (placementId) {
+          setState(() {
+            _isInterstitialLoaded = true;
+            _isInterstitialLoading = false;
+          });
+        },
+        onFailed: (placementId, error, message) {
+          print('Load Failed: $message');
+          setState(() => _isInterstitialLoading = false);
+        },
+      );
+    }
   }
 
   void _showInterstitialAd() {
@@ -72,12 +75,10 @@ class _MyHomePageState extends State<MyHomePage> {
         placementId: 'Interstitial_iOS',
         onComplete: (placementId) {
           setState(() => _isInterstitialLoaded = false);
-          _loadInterstitialAd();
         },
         onFailed: (placementId, error, message) {
           print('Show Failed: $message');
           setState(() => _isInterstitialLoaded = false);
-          _loadInterstitialAd();
         },
         onStart: (placementId) => print('Ad Started'),
         onClick: (placementId) => print('Ad Clicked'),
@@ -86,17 +87,22 @@ class _MyHomePageState extends State<MyHomePage> {
   }
 
   void _loadRewardedAd() {
-    UnityAds.load(
-      placementId: 'Rewarded_iOS',
-      onComplete: (placementId) {
-        setState(() => _isRewardedLoaded = true);
-        print('Rewarded Ad Loaded');
-      },
-      onFailed: (placementId, error, message) {
-        print('Rewarded Load Failed: $message');
-        setState(() => _isRewardedLoaded = false);
-      },
-    );
+    if (!_isRewardedLoading) {
+      setState(() => _isRewardedLoading = true);
+      UnityAds.load(
+        placementId: 'Rewarded_iOS',
+        onComplete: (placementId) {
+          setState(() {
+            _isRewardedLoaded = true;
+            _isRewardedLoading = false;
+          });
+        },
+        onFailed: (placementId, error, message) {
+          print('Load Failed: $message');
+          setState(() => _isRewardedLoading = false);
+        },
+      );
+    }
   }
 
   void _showRewardedAd() {
@@ -108,12 +114,10 @@ class _MyHomePageState extends State<MyHomePage> {
             _isRewardedLoaded = false;
             _coins += 10;
           });
-          _loadRewardedAd();
         },
         onFailed: (placementId, error, message) {
           print('Show Failed: $message');
           setState(() => _isRewardedLoaded = false);
-          _loadRewardedAd();
         },
         onStart: (placementId) => print('Ad Started'),
         onClick: (placementId) => print('Ad Clicked'),
@@ -138,27 +142,51 @@ class _MyHomePageState extends State<MyHomePage> {
             ),
             const SizedBox(height: 30),
             ElevatedButton(
-              onPressed: _isInterstitialLoaded ? _showInterstitialAd : _loadInterstitialAd,
+              onPressed: _isInterstitialLoading
+                  ? null
+                  : _isInterstitialLoaded
+                      ? _showInterstitialAd
+                      : _loadInterstitialAd,
               style: ElevatedButton.styleFrom(
                 padding: const EdgeInsets.symmetric(horizontal: 30, vertical: 15),
-                backgroundColor: _isInterstitialLoaded ? Colors.green : Colors.blue,
-                foregroundColor: Colors.white,
+                backgroundColor: _isInterstitialLoaded
+                    ? Colors.green
+                    : _isInterstitialLoading
+                        ? Colors.grey
+                        : Colors.blue,
+                disabledBackgroundColor: Colors.grey,
               ),
               child: Text(
-                _isInterstitialLoaded ? 'Show Interstitial Ad' : 'Load Interstitial Ad',
+                _isInterstitialLoading
+                    ? 'Loading Interstitial Ad...'
+                    : _isInterstitialLoaded
+                        ? 'Show Interstitial Ad'
+                        : 'Load Interstitial Ad',
                 style: const TextStyle(fontSize: 18),
               ),
             ),
             const SizedBox(height: 20),
             ElevatedButton(
-              onPressed: _isRewardedLoaded ? _showRewardedAd : _loadRewardedAd,
+              onPressed: _isRewardedLoading
+                  ? null
+                  : _isRewardedLoaded
+                      ? _showRewardedAd
+                      : _loadRewardedAd,
               style: ElevatedButton.styleFrom(
                 padding: const EdgeInsets.symmetric(horizontal: 30, vertical: 15),
-                backgroundColor: _isRewardedLoaded ? Colors.green : Colors.blue,
-                foregroundColor: Colors.white,
+                backgroundColor: _isRewardedLoaded
+                    ? Colors.green
+                    : _isRewardedLoading
+                        ? Colors.grey
+                        : Colors.blue,
+                disabledBackgroundColor: Colors.grey,
               ),
               child: Text(
-                _isRewardedLoaded ? 'Show Rewarded Ad' : 'Load Rewarded Ad',
+                _isRewardedLoading
+                    ? 'Loading Rewarded Ad...'
+                    : _isRewardedLoaded
+                        ? 'Show Rewarded Ad'
+                        : 'Load Rewarded Ad',
                 style: const TextStyle(fontSize: 18),
               ),
             ),
