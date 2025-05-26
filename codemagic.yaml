@@ -1,32 +1,23 @@
 workflows:
-  ios-workflow:
-    name: iOS Workflow
+  ios-simulator:
+    name: iOS Simulator Build
     instance_type: mac_mini_m1
     max_build_duration: 60
     environment:
-      ios_signing:
-        distribution_type: development
-        xcode: latest
-      vars:
-        XCODE_WORKSPACE: "Runner.xcworkspace"
-        XCODE_SCHEME: "Runner"
+      xcode: latest
       flutter: stable
     scripts:
-      - name: Set up code signing settings
-        script: |
-          echo "Setting up code signing"
-          keychain initialize
       - name: Get Flutter packages
         script: |
           flutter packages pub get
       - name: Install pods
         script: |
           find . -name "Podfile" -execdir pod install \;
-      - name: Flutter build ipa
+      - name: Build for iOS Simulator
         script: |
-          flutter build ios --release --no-codesign
+          flutter build ios --debug --no-codesign --simulator
     artifacts:
-      - build/ios/iphoneos/Runner.app
+      - build/ios/iphonesimulator/*.app
     publishing:
       email:
         recipients:
