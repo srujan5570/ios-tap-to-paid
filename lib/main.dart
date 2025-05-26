@@ -42,8 +42,12 @@ class _MyHomePageState extends State<MyHomePage> {
   Future<void> _initUnityAds() async {
     await UnityAds.init(
       gameId: '5859176',
-      testMode: true,
-      onComplete: () => print('Initialization Complete'),
+      testMode: false,
+      onComplete: () {
+        print('Initialization Complete');
+        _loadInterstitialAd();
+        _loadRewardedAd();
+      },
       onFailed: (error, message) => print('Initialization Failed: $message'),
     );
   }
@@ -53,8 +57,12 @@ class _MyHomePageState extends State<MyHomePage> {
       placementId: 'Interstitial_iOS',
       onComplete: (placementId) {
         setState(() => _isInterstitialLoaded = true);
+        print('Interstitial Ad Loaded');
       },
-      onFailed: (placementId, error, message) => print('Load Failed: $message'),
+      onFailed: (placementId, error, message) {
+        print('Interstitial Load Failed: $message');
+        setState(() => _isInterstitialLoaded = false);
+      },
     );
   }
 
@@ -64,8 +72,13 @@ class _MyHomePageState extends State<MyHomePage> {
         placementId: 'Interstitial_iOS',
         onComplete: (placementId) {
           setState(() => _isInterstitialLoaded = false);
+          _loadInterstitialAd();
         },
-        onFailed: (placementId, error, message) => print('Show Failed: $message'),
+        onFailed: (placementId, error, message) {
+          print('Show Failed: $message');
+          setState(() => _isInterstitialLoaded = false);
+          _loadInterstitialAd();
+        },
         onStart: (placementId) => print('Ad Started'),
         onClick: (placementId) => print('Ad Clicked'),
       );
@@ -77,8 +90,12 @@ class _MyHomePageState extends State<MyHomePage> {
       placementId: 'Rewarded_iOS',
       onComplete: (placementId) {
         setState(() => _isRewardedLoaded = true);
+        print('Rewarded Ad Loaded');
       },
-      onFailed: (placementId, error, message) => print('Load Failed: $message'),
+      onFailed: (placementId, error, message) {
+        print('Rewarded Load Failed: $message');
+        setState(() => _isRewardedLoaded = false);
+      },
     );
   }
 
@@ -91,8 +108,13 @@ class _MyHomePageState extends State<MyHomePage> {
             _isRewardedLoaded = false;
             _coins += 10;
           });
+          _loadRewardedAd();
         },
-        onFailed: (placementId, error, message) => print('Show Failed: $message'),
+        onFailed: (placementId, error, message) {
+          print('Show Failed: $message');
+          setState(() => _isRewardedLoaded = false);
+          _loadRewardedAd();
+        },
         onStart: (placementId) => print('Ad Started'),
         onClick: (placementId) => print('Ad Clicked'),
       );
@@ -119,6 +141,8 @@ class _MyHomePageState extends State<MyHomePage> {
               onPressed: _isInterstitialLoaded ? _showInterstitialAd : _loadInterstitialAd,
               style: ElevatedButton.styleFrom(
                 padding: const EdgeInsets.symmetric(horizontal: 30, vertical: 15),
+                backgroundColor: _isInterstitialLoaded ? Colors.green : Colors.blue,
+                foregroundColor: Colors.white,
               ),
               child: Text(
                 _isInterstitialLoaded ? 'Show Interstitial Ad' : 'Load Interstitial Ad',
@@ -130,6 +154,8 @@ class _MyHomePageState extends State<MyHomePage> {
               onPressed: _isRewardedLoaded ? _showRewardedAd : _loadRewardedAd,
               style: ElevatedButton.styleFrom(
                 padding: const EdgeInsets.symmetric(horizontal: 30, vertical: 15),
+                backgroundColor: _isRewardedLoaded ? Colors.green : Colors.blue,
+                foregroundColor: Colors.white,
               ),
               child: Text(
                 _isRewardedLoaded ? 'Show Rewarded Ad' : 'Load Rewarded Ad',
