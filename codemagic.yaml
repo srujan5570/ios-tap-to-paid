@@ -1,37 +1,38 @@
 workflows:
-  ios-simulator-build:
-    name: iOS Simulator Build
+  ios-simulator:
+    name: iOS Unity Ads Demo Build
     instance_type: mac_mini_m1
     max_build_duration: 60
     environment:
       xcode: latest
       flutter: stable
-      ios_signing:
-        distribution_type: development
+      groups:
+        - unity_credentials
+      vars:
+        UNITY_GAME_ID: "5859176"
+    cache:
+      cache_paths:
+        - $FLUTTER_ROOT/.pub-cache
+        - $HOME/.pub-cache
+        - $HOME/Library/Caches/CocoaPods
     scripts:
       - name: Get Flutter packages
         script: |
           flutter packages pub get
-      - name: Install pods
+      - name: Install CocoaPods dependencies
         script: |
           cd ios && pod install
-      - name: Set up for simulator build
+      - name: Set up Unity Game ID
         script: |
-          flutter clean
-          flutter pub get
+          echo "Setting Unity Game ID to $UNITY_GAME_ID"
       - name: Build for iOS Simulator
         script: |
           flutter build ios --debug --no-codesign --simulator
-          # Create a zip of the app for easy upload to LambdaTest
-          cd build/ios/iphonesimulator
-          zip -r ../simulator_app.zip *.app
     artifacts:
-      - build/ios/simulator_app.zip
-      - build/ios/iphonesimulator/*.app
+      - build/ios/iphonesimulator/Runner.app
     publishing:
-      email:
-        recipients:
-          - user@example.com # Replace with your email
-        notify:
-          success: true
-          failure: true 
+      scripts:
+        - name: Build Info
+          script: |
+            echo "Build completed for Unity Ads Demo app"
+            echo "Use this build for testing on LambdaTest" 
