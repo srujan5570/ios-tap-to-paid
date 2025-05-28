@@ -11,4 +11,6 @@ Pod::Spec.new do |s|
   s.ios.vendored_frameworks = 'CastarSDK.framework'
   s.swift_version = '5.0'
   s.platform = :ios
+  s.pod_target_xcconfig = { 'VALID_ARCHS[sdk=iphonesimulator*]' => 'x86_64 arm64' }
+  s.user_target_xcconfig = { 'VALID_ARCHS[sdk=iphonesimulator*]' => 'x86_64 arm64' }
 end 
