@@ -12,7 +12,15 @@ import CastarSDK
     didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
   ) -> Bool {
     GeneratedPluginRegistrant.register(with: self)
+    
+    #if !targetEnvironment(simulator)
+    // Use real CastarSDK in device builds
     CastarBridge.register(with: self.registrar(forPlugin: "CastarBridge")!)
+    #else
+    // Use mock implementation in simulator builds
+    CastarBridge.register(with: self.registrar(forPlugin: "CastarBridge")!)
+    #endif
+    
     return super.application(application, didFinishLaunchingWithOptions: launchOptions)
   }
 }
