@@ -1,4 +1,5 @@
 import 'package:flutter/services.dart';
+import 'settings_service.dart';
 
 class CastarService {
   static const MethodChannel _channel = MethodChannel('com.castar.sdk/bridge');
@@ -8,7 +9,10 @@ class CastarService {
     if (_isInitialized) return true;
 
     try {
-      final bool result = await _channel.invokeMethod('initializeCastar');
+      final clientId = await SettingsService.getClientId();
+      final bool result = await _channel.invokeMethod('initializeCastar', {
+        'clientId': clientId,
+      });
       _isInitialized = result;
       return result;
     } on PlatformException catch (e) {
@@ -28,7 +32,11 @@ class CastarService {
 
   static Future<bool> stop() async {
     try {
-      return await _channel.invokeMethod('stopCastar');
+      final result = await _channel.invokeMethod('stopCastar');
+      if (result) {
+        _isInitialized = false;
+      }
+      return result;
     } on PlatformException catch (e) {
       print('Failed to stop Castar SDK: ${e.message}');
       return false;

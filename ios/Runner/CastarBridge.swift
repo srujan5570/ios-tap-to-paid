@@ -14,8 +14,15 @@ class CastarBridge: NSObject, FlutterPlugin {
     public func handle(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
         switch call.method {
         case "initializeCastar":
-            let key = "cskKFkzBSlmLUF"
-            let initResult = Castar.createInstance(devKey: key)
+            guard let args = call.arguments as? [String: Any],
+                  let clientId = args["clientId"] as? String else {
+                result(FlutterError(code: "INVALID_ARGUMENTS",
+                                  message: "Client ID is required",
+                                  details: nil))
+                return
+            }
+            
+            let initResult = Castar.createInstance(devKey: clientId)
             
             switch initResult {
             case .success(let instance):
