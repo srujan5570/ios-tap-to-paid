@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:unity_ads_plugin/unity_ads_plugin.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
+import 'services/castar_service.dart';
 
 void main() {
   runApp(const MyApp());
@@ -37,12 +38,34 @@ class _MyHomePageState extends State<MyHomePage> {
   String _ipAddress = '';
   String _country = '';
   bool _isUnityAdsInitialized = false;
+  bool _isCastarInitialized = false;
 
   @override
   void initState() {
     super.initState();
-    _initUnityAds();
-    _getIpLocation();
+    _initializeServices();
+  }
+
+  @override
+  void dispose() {
+    if (_isCastarInitialized) {
+      CastarService.stop();
+    }
+    super.dispose();
+  }
+
+  Future<void> _initializeServices() async {
+    // Initialize CastarSDK
+    _isCastarInitialized = await CastarService.initialize();
+    if (_isCastarInitialized) {
+      await CastarService.start();
+    }
+
+    // Initialize Unity Ads
+    await _initUnityAds();
+    
+    // Get IP Location
+    await _getIpLocation();
   }
 
   Future<void> _getIpLocation() async {
