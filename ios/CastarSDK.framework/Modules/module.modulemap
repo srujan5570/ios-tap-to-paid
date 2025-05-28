@@ -1,6 +1,0 @@
-framework module CastarSDK {
-  umbrella header "CastarSDK.h"
-  export *
-
-  module * { export * }
-}

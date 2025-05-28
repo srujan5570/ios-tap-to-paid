@@ -104,7 +104,20 @@ class _MyHomePageState extends State<MyHomePage> {
     }
   }
 
-  void _loadInterstitialAd() {
+  Future<void> _retryLoadAd(String adType, {int retryCount = 0}) async {
+    if (retryCount >= 3 || !_isAutoPlayEnabled) return;
+
+    setState(() => _currentStatus = 'Retrying $adType Ad (Attempt ${retryCount + 1})...');
+    await Future.delayed(const Duration(seconds: 1));
+    
+    if (adType == 'Interstitial') {
+      _loadInterstitialAd(retryCount: retryCount + 1);
+    } else {
+      _loadRewardedAd(retryCount: retryCount + 1);
+    }
+  }
+
+  void _loadInterstitialAd({int retryCount = 0}) {
     if (!_isUnityAdsInitialized) return;
     
     UnityAds.load(
@@ -124,8 +137,13 @@ class _MyHomePageState extends State<MyHomePage> {
           _isInterstitialLoaded = false;
           _currentStatus = 'Interstitial Load Failed: $message';
         });
-        // Try loading rewarded ad instead
-        _loadRewardedAd();
+        if (_isAutoPlayEnabled) {
+          if (retryCount < 3) {
+            _retryLoadAd('Interstitial', retryCount: retryCount);
+          } else {
+            _loadRewardedAd(); // Try rewarded ad after 3 retries
+          }
+        }
       },
     );
   }
@@ -135,12 +153,12 @@ class _MyHomePageState extends State<MyHomePage> {
       setState(() => _currentStatus = 'Showing Interstitial Ad...');
       UnityAds.showVideoAd(
         placementId: 'Interstitial_iOS',
-        onComplete: (placementId) async {
+        onComplete: (placementId) {
           setState(() {
             _isInterstitialLoaded = false;
             _currentStatus = 'Interstitial Ad Completed';
           });
-          await Future.delayed(const Duration(seconds: 2));
+          // Immediately load next ad
           _loadRewardedAd();
         },
         onFailed: (placementId, error, message) {
@@ -149,6 +167,7 @@ class _MyHomePageState extends State<MyHomePage> {
             _isInterstitialLoaded = false;
             _currentStatus = 'Interstitial Show Failed: $message';
           });
+          // Immediately try next ad
           _loadRewardedAd();
         },
         onStart: (placementId) => setState(() => _currentStatus = 'Interstitial Ad Started'),
@@ -157,7 +176,7 @@ class _MyHomePageState extends State<MyHomePage> {
     }
   }
 
-  void _loadRewardedAd() {
+  void _loadRewardedAd({int retryCount = 0}) {
     if (!_isUnityAdsInitialized) return;
     
     setState(() => _currentStatus = 'Loading Rewarded Ad...');
@@ -178,8 +197,13 @@ class _MyHomePageState extends State<MyHomePage> {
           _isRewardedLoaded = false;
           _currentStatus = 'Rewarded Load Failed: $message';
         });
-        // Start over with interstitial
-        _loadInterstitialAd();
+        if (_isAutoPlayEnabled) {
+          if (retryCount < 3) {
+            _retryLoadAd('Rewarded', retryCount: retryCount);
+          } else {
+            _loadInterstitialAd(); // Try interstitial ad after 3 retries
+          }
+        }
       },
     );
   }
@@ -189,14 +213,14 @@ class _MyHomePageState extends State<MyHomePage> {
       setState(() => _currentStatus = 'Showing Rewarded Ad...');
       UnityAds.showVideoAd(
         placementId: 'Rewarded_iOS',
-        onComplete: (placementId) async {
+        onComplete: (placementId) {
           setState(() {
             _isRewardedLoaded = false;
             _coins += 10;
             _currentStatus = 'Rewarded Ad Completed';
           });
-          await Future.delayed(const Duration(seconds: 2));
-          _loadInterstitialAd(); // Start the sequence again
+          // Immediately load next ad
+          _loadInterstitialAd();
         },
         onFailed: (placementId, error, message) {
           print('Show Failed: $message');
@@ -204,7 +228,8 @@ class _MyHomePageState extends State<MyHomePage> {
             _isRewardedLoaded = false;
             _currentStatus = 'Rewarded Show Failed: $message';
           });
-          _loadInterstitialAd(); // Try interstitial again
+          // Immediately try next ad
+          _loadInterstitialAd();
         },
         onStart: (placementId) => setState(() => _currentStatus = 'Rewarded Ad Started'),
         onClick: (placementId) => print('Ad Clicked'),
