@@ -1,6 +1,9 @@
 import Flutter
 import UIKit
+
+#if !targetEnvironment(simulator)
 import CastarSDK
+#endif
 
 @UIApplicationMain
 @objc class AppDelegate: FlutterAppDelegate {
