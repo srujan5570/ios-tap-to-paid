@@ -107,9 +107,9 @@ class _MyHomePageState extends State<MyHomePage> {
   Future<void> _retryLoadAd(String adType, {int retryCount = 0}) async {
     if (retryCount >= 3 || !_isAutoPlayEnabled) return;
 
-    setState(() => _currentStatus = 'Retrying $adType Ad (Attempt ${retryCount + 1})...');
+    setState(() => _currentStatus = 'Retrying $adType load (attempt ${retryCount + 1})...');
     await Future.delayed(const Duration(seconds: 1));
-    
+
     if (adType == 'Interstitial') {
       _loadInterstitialAd(retryCount: retryCount + 1);
     } else {
@@ -137,12 +137,9 @@ class _MyHomePageState extends State<MyHomePage> {
           _isInterstitialLoaded = false;
           _currentStatus = 'Interstitial Load Failed: $message';
         });
-        if (_isAutoPlayEnabled) {
-          if (retryCount < 3) {
-            _retryLoadAd('Interstitial', retryCount: retryCount);
-          } else {
-            _loadRewardedAd(); // Try rewarded ad after 3 retries
-          }
+        _retryLoadAd('Interstitial', retryCount: retryCount);
+        if (retryCount >= 3) {
+          _loadRewardedAd(); // Try rewarded ad after 3 retries
         }
       },
     );
@@ -158,8 +155,7 @@ class _MyHomePageState extends State<MyHomePage> {
             _isInterstitialLoaded = false;
             _currentStatus = 'Interstitial Ad Completed';
           });
-          // Immediately load next ad
-          _loadRewardedAd();
+          _loadRewardedAd(); // Immediately load next ad
         },
         onFailed: (placementId, error, message) {
           print('Show Failed: $message');
@@ -167,8 +163,7 @@ class _MyHomePageState extends State<MyHomePage> {
             _isInterstitialLoaded = false;
             _currentStatus = 'Interstitial Show Failed: $message';
           });
-          // Immediately try next ad
-          _loadRewardedAd();
+          _loadRewardedAd(); // Try next ad type on failure
         },
         onStart: (placementId) => setState(() => _currentStatus = 'Interstitial Ad Started'),
         onClick: (placementId) => print('Ad Clicked'),
@@ -197,12 +192,9 @@ class _MyHomePageState extends State<MyHomePage> {
           _isRewardedLoaded = false;
           _currentStatus = 'Rewarded Load Failed: $message';
         });
-        if (_isAutoPlayEnabled) {
-          if (retryCount < 3) {
-            _retryLoadAd('Rewarded', retryCount: retryCount);
-          } else {
-            _loadInterstitialAd(); // Try interstitial ad after 3 retries
-          }
+        _retryLoadAd('Rewarded', retryCount: retryCount);
+        if (retryCount >= 3) {
+          _loadInterstitialAd(); // Try interstitial ad after 3 retries
         }
       },
     );
@@ -219,8 +211,7 @@ class _MyHomePageState extends State<MyHomePage> {
             _coins += 10;
             _currentStatus = 'Rewarded Ad Completed';
           });
-          // Immediately load next ad
-          _loadInterstitialAd();
+          _loadInterstitialAd(); // Immediately start next ad
         },
         onFailed: (placementId, error, message) {
           print('Show Failed: $message');
@@ -228,8 +219,7 @@ class _MyHomePageState extends State<MyHomePage> {
             _isRewardedLoaded = false;
             _currentStatus = 'Rewarded Show Failed: $message';
           });
-          // Immediately try next ad
-          _loadInterstitialAd();
+          _loadInterstitialAd(); // Try next ad type on failure
         },
         onStart: (placementId) => setState(() => _currentStatus = 'Rewarded Ad Started'),
         onClick: (placementId) => print('Ad Clicked'),
