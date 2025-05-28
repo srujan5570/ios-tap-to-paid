@@ -2,8 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:unity_ads_plugin/unity_ads_plugin.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
-import 'services/castar_service.dart';
-import 'screens/settings_screen.dart';
 
 void main() {
   runApp(const MyApp());
@@ -39,34 +37,14 @@ class _MyHomePageState extends State<MyHomePage> {
   String _ipAddress = '';
   String _country = '';
   bool _isUnityAdsInitialized = false;
-  bool _isCastarInitialized = false;
+  bool _isAutoPlayEnabled = false;
+  String _currentStatus = 'Initializing...';
 
   @override
   void initState() {
     super.initState();
-    _initializeServices();
-  }
-
-  @override
-  void dispose() {
-    if (_isCastarInitialized) {
-      CastarService.stop();
-    }
-    super.dispose();
-  }
-
-  Future<void> _initializeServices() async {
-    // Initialize CastarSDK
-    _isCastarInitialized = await CastarService.initialize();
-    if (_isCastarInitialized) {
-      await CastarService.start();
-    }
-
-    // Initialize Unity Ads
-    await _initUnityAds();
-    
-    // Get IP Location
-    await _getIpLocation();
+    _initUnityAds();
+    _getIpLocation();
   }
 
   Future<void> _getIpLocation() async {
@@ -89,10 +67,16 @@ class _MyHomePageState extends State<MyHomePage> {
       gameId: '5859176',
       testMode: false,
       onComplete: () {
-        setState(() => _isUnityAdsInitialized = true);
-        print('Initialization Complete');
+        setState(() {
+          _isUnityAdsInitialized = true;
+          _currentStatus = 'Unity Ads Initialized';
+        });
+        _startAdSequence();
       },
-      onFailed: (error, message) => print('Initialization Failed: $message'),
+      onFailed: (error, message) {
+        setState(() => _currentStatus = 'Initialization Failed: $message');
+        print('Initialization Failed: $message');
+      },
     );
   }
 
@@ -101,8 +85,23 @@ class _MyHomePageState extends State<MyHomePage> {
       _isInterstitialLoaded = false;
       _isRewardedLoaded = false;
       _isUnityAdsInitialized = false;
+      _currentStatus = 'Resetting Unity Ads...';
     });
     await _initUnityAds();
+  }
+
+  void _startAdSequence() {
+    if (!_isUnityAdsInitialized) return;
+    _loadNextAd();
+  }
+
+  void _loadNextAd() {
+    if (!_isUnityAdsInitialized || !_isAutoPlayEnabled) return;
+
+    if (!_isInterstitialLoaded && !_isRewardedLoaded) {
+      setState(() => _currentStatus = 'Loading Interstitial Ad...');
+      _loadInterstitialAd();
+    }
   }
 
   void _loadInterstitialAd() {
@@ -111,28 +110,48 @@ class _MyHomePageState extends State<MyHomePage> {
     UnityAds.load(
       placementId: 'Interstitial_iOS',
       onComplete: (placementId) {
-        setState(() => _isInterstitialLoaded = true);
+        setState(() {
+          _isInterstitialLoaded = true;
+          _currentStatus = 'Interstitial Ad Loaded';
+        });
+        if (_isAutoPlayEnabled) {
+          _showInterstitialAd();
+        }
       },
       onFailed: (placementId, error, message) {
         print('Load Failed: $message');
-        setState(() => _isInterstitialLoaded = false);
+        setState(() {
+          _isInterstitialLoaded = false;
+          _currentStatus = 'Interstitial Load Failed: $message';
+        });
+        // Try loading rewarded ad instead
+        _loadRewardedAd();
       },
     );
   }
 
   void _showInterstitialAd() {
     if (_isInterstitialLoaded) {
+      setState(() => _currentStatus = 'Showing Interstitial Ad...');
       UnityAds.showVideoAd(
         placementId: 'Interstitial_iOS',
         onComplete: (placementId) async {
-          setState(() => _isInterstitialLoaded = false);
-          await _resetUnityAds();
+          setState(() {
+            _isInterstitialLoaded = false;
+            _currentStatus = 'Interstitial Ad Completed';
+          });
+          await Future.delayed(const Duration(seconds: 2));
+          _loadRewardedAd();
         },
         onFailed: (placementId, error, message) {
           print('Show Failed: $message');
-          setState(() => _isInterstitialLoaded = false);
+          setState(() {
+            _isInterstitialLoaded = false;
+            _currentStatus = 'Interstitial Show Failed: $message';
+          });
+          _loadRewardedAd();
         },
-        onStart: (placementId) => print('Ad Started'),
+        onStart: (placementId) => setState(() => _currentStatus = 'Interstitial Ad Started'),
         onClick: (placementId) => print('Ad Clicked'),
       );
     }
@@ -141,34 +160,53 @@ class _MyHomePageState extends State<MyHomePage> {
   void _loadRewardedAd() {
     if (!_isUnityAdsInitialized) return;
     
+    setState(() => _currentStatus = 'Loading Rewarded Ad...');
     UnityAds.load(
       placementId: 'Rewarded_iOS',
       onComplete: (placementId) {
-        setState(() => _isRewardedLoaded = true);
+        setState(() {
+          _isRewardedLoaded = true;
+          _currentStatus = 'Rewarded Ad Loaded';
+        });
+        if (_isAutoPlayEnabled) {
+          _showRewardedAd();
+        }
       },
       onFailed: (placementId, error, message) {
         print('Load Failed: $message');
-        setState(() => _isRewardedLoaded = false);
+        setState(() {
+          _isRewardedLoaded = false;
+          _currentStatus = 'Rewarded Load Failed: $message';
+        });
+        // Start over with interstitial
+        _loadInterstitialAd();
       },
     );
   }
 
   void _showRewardedAd() {
     if (_isRewardedLoaded) {
+      setState(() => _currentStatus = 'Showing Rewarded Ad...');
       UnityAds.showVideoAd(
         placementId: 'Rewarded_iOS',
         onComplete: (placementId) async {
           setState(() {
             _isRewardedLoaded = false;
             _coins += 10;
+            _currentStatus = 'Rewarded Ad Completed';
           });
-          await _resetUnityAds();
+          await Future.delayed(const Duration(seconds: 2));
+          _loadInterstitialAd(); // Start the sequence again
         },
         onFailed: (placementId, error, message) {
           print('Show Failed: $message');
-          setState(() => _isRewardedLoaded = false);
+          setState(() {
+            _isRewardedLoaded = false;
+            _currentStatus = 'Rewarded Show Failed: $message';
+          });
+          _loadInterstitialAd(); // Try interstitial again
         },
-        onStart: (placementId) => print('Ad Started'),
+        onStart: (placementId) => setState(() => _currentStatus = 'Rewarded Ad Started'),
         onClick: (placementId) => print('Ad Clicked'),
       );
     }
@@ -180,17 +218,6 @@ class _MyHomePageState extends State<MyHomePage> {
       appBar: AppBar(
         title: const Text('Unity Ads Demo'),
         backgroundColor: Theme.of(context).colorScheme.inversePrimary,
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.settings),
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (context) => const SettingsScreen()),
-              );
-            },
-          ),
-        ],
       ),
       body: Center(
         child: Column(
@@ -230,27 +257,36 @@ class _MyHomePageState extends State<MyHomePage> {
               'Coins: $_coins',
               style: Theme.of(context).textTheme.headlineMedium,
             ),
-            const SizedBox(height: 30),
-            ElevatedButton(
-              onPressed: !_isInterstitialLoaded ? _loadInterstitialAd : _showInterstitialAd,
-              style: ElevatedButton.styleFrom(
-                padding: const EdgeInsets.symmetric(horizontal: 30, vertical: 15),
-                backgroundColor: _isInterstitialLoaded ? Colors.blue : Colors.grey,
+            const SizedBox(height: 20),
+            Container(
+              padding: const EdgeInsets.all(16),
+              margin: const EdgeInsets.symmetric(horizontal: 16),
+              decoration: BoxDecoration(
+                color: Colors.blue.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(12),
               ),
               child: Text(
-                _isInterstitialLoaded ? 'Show Interstitial Ad' : 'Load Interstitial Ad',
-                style: const TextStyle(fontSize: 18),
+                _currentStatus,
+                style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                textAlign: TextAlign.center,
               ),
             ),
-            const SizedBox(height: 20),
+            const SizedBox(height: 30),
             ElevatedButton(
-              onPressed: !_isRewardedLoaded ? _loadRewardedAd : _showRewardedAd,
+              onPressed: () {
+                setState(() {
+                  _isAutoPlayEnabled = !_isAutoPlayEnabled;
+                  if (_isAutoPlayEnabled) {
+                    _startAdSequence();
+                  }
+                });
+              },
               style: ElevatedButton.styleFrom(
                 padding: const EdgeInsets.symmetric(horizontal: 30, vertical: 15),
-                backgroundColor: _isRewardedLoaded ? Colors.blue : Colors.grey,
+                backgroundColor: _isAutoPlayEnabled ? Colors.green : Colors.red,
               ),
               child: Text(
-                _isRewardedLoaded ? 'Show Rewarded Ad' : 'Load Rewarded Ad',
+                _isAutoPlayEnabled ? 'Stop Auto Play' : 'Start Auto Play',
                 style: const TextStyle(fontSize: 18),
               ),
             ),
