@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:unity_ads_plugin/unity_ads_plugin.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
+import 'package:geolocator/geolocator.dart';
+import 'package:geocoding/geocoding.dart';
 
 void main() {
   runApp(const MyApp());
@@ -14,10 +16,7 @@ class MyApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'Unity Ads Demo',
-      theme: ThemeData(
-        primarySwatch: Colors.blue,
-        useMaterial3: true,
-      ),
+      theme: ThemeData(primarySwatch: Colors.blue, useMaterial3: true),
       home: const MyHomePage(),
     );
   }
@@ -36,15 +35,17 @@ class _MyHomePageState extends State<MyHomePage> {
   int _coins = 0;
   String _ipAddress = '';
   String _country = '';
+  String _gpsCoordinates = '';
+  String _gpsAddress = '';
   bool _isUnityAdsInitialized = false;
-  bool _isAutoPlayEnabled = false;
-  String _currentStatus = 'Initializing...';
+  bool _isLoadingLocation = false;
 
   @override
   void initState() {
     super.initState();
     _initUnityAds();
     _getIpLocation();
+    _getGpsLocation();
   }
 
   Future<void> _getIpLocation() async {
@@ -62,21 +63,86 @@ class _MyHomePageState extends State<MyHomePage> {
     }
   }
 
+  Future<void> _getGpsLocation() async {
+    setState(() {
+      _isLoadingLocation = true;
+    });
+
+    try {
+      // Check location permissions
+      LocationPermission permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+        if (permission == LocationPermission.denied) {
+          setState(() {
+            _gpsCoordinates = 'Location permissions denied';
+            _gpsAddress = 'Cannot determine address';
+            _isLoadingLocation = false;
+          });
+          return;
+        }
+      }
+
+      if (permission == LocationPermission.deniedForever) {
+        setState(() {
+          _gpsCoordinates = 'Location permissions permanently denied';
+          _gpsAddress = 'Cannot determine address';
+          _isLoadingLocation = false;
+        });
+        return;
+      }
+
+      // Get the current position
+      Position position = await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.high,
+      );
+
+      setState(() {
+        _gpsCoordinates = '${position.latitude}, ${position.longitude}';
+      });
+
+      // Get the address from the coordinates
+      try {
+        List<Placemark> placemarks = await placemarkFromCoordinates(
+          position.latitude,
+          position.longitude,
+        );
+
+        if (placemarks.isNotEmpty) {
+          Placemark place = placemarks[0];
+          setState(() {
+            _gpsAddress =
+                '${place.street}, ${place.locality}, ${place.country}';
+          });
+        }
+      } catch (e) {
+        print('Error getting address: $e');
+        setState(() {
+          _gpsAddress = 'Address not available';
+        });
+      }
+    } catch (e) {
+      print('Error getting GPS location: $e');
+      setState(() {
+        _gpsCoordinates = 'Error getting location';
+        _gpsAddress = 'Cannot determine address';
+      });
+    } finally {
+      setState(() {
+        _isLoadingLocation = false;
+      });
+    }
+  }
+
   Future<void> _initUnityAds() async {
     await UnityAds.init(
       gameId: '5859176',
       testMode: false,
       onComplete: () {
-        setState(() {
-          _isUnityAdsInitialized = true;
-          _currentStatus = 'Unity Ads Initialized';
-        });
-        _startAdSequence();
+        setState(() => _isUnityAdsInitialized = true);
+        print('Initialization Complete');
       },
-      onFailed: (error, message) {
-        setState(() => _currentStatus = 'Initialization Failed: $message');
-        print('Initialization Failed: $message');
-      },
+      onFailed: (error, message) => print('Initialization Failed: $message'),
     );
   }
 
@@ -85,143 +151,74 @@ class _MyHomePageState extends State<MyHomePage> {
       _isInterstitialLoaded = false;
       _isRewardedLoaded = false;
       _isUnityAdsInitialized = false;
-      _currentStatus = 'Resetting Unity Ads...';
     });
     await _initUnityAds();
   }
 
-  void _startAdSequence() {
+  void _loadInterstitialAd() {
     if (!_isUnityAdsInitialized) return;
-    _loadNextAd();
-  }
 
-  void _loadNextAd() {
-    if (!_isUnityAdsInitialized || !_isAutoPlayEnabled) return;
-
-    if (!_isInterstitialLoaded && !_isRewardedLoaded) {
-      setState(() => _currentStatus = 'Loading Interstitial Ad...');
-      _loadInterstitialAd();
-    }
-  }
-
-  Future<void> _retryLoadAd(String adType, {int retryCount = 0}) async {
-    if (retryCount >= 3 || !_isAutoPlayEnabled) return;
-
-    setState(() => _currentStatus = 'Retrying $adType load (attempt ${retryCount + 1})...');
-    await Future.delayed(const Duration(seconds: 1));
-
-    if (adType == 'Interstitial') {
-      _loadInterstitialAd(retryCount: retryCount + 1);
-    } else {
-      _loadRewardedAd(retryCount: retryCount + 1);
-    }
-  }
-
-  void _loadInterstitialAd({int retryCount = 0}) {
-    if (!_isUnityAdsInitialized) return;
-    
     UnityAds.load(
       placementId: 'Interstitial_iOS',
       onComplete: (placementId) {
-        setState(() {
-          _isInterstitialLoaded = true;
-          _currentStatus = 'Interstitial Ad Loaded';
-        });
-        if (_isAutoPlayEnabled) {
-          _showInterstitialAd();
-        }
+        setState(() => _isInterstitialLoaded = true);
       },
       onFailed: (placementId, error, message) {
         print('Load Failed: $message');
-        setState(() {
-          _isInterstitialLoaded = false;
-          _currentStatus = 'Interstitial Load Failed: $message';
-        });
-        _retryLoadAd('Interstitial', retryCount: retryCount);
-        if (retryCount >= 3) {
-          _loadRewardedAd(); // Try rewarded ad after 3 retries
-        }
+        setState(() => _isInterstitialLoaded = false);
       },
     );
   }
 
   void _showInterstitialAd() {
     if (_isInterstitialLoaded) {
-      setState(() => _currentStatus = 'Showing Interstitial Ad...');
       UnityAds.showVideoAd(
         placementId: 'Interstitial_iOS',
-        onComplete: (placementId) {
-          setState(() {
-            _isInterstitialLoaded = false;
-            _currentStatus = 'Interstitial Ad Completed';
-          });
-          _loadRewardedAd(); // Immediately load next ad
+        onComplete: (placementId) async {
+          setState(() => _isInterstitialLoaded = false);
+          await _resetUnityAds();
         },
         onFailed: (placementId, error, message) {
           print('Show Failed: $message');
-          setState(() {
-            _isInterstitialLoaded = false;
-            _currentStatus = 'Interstitial Show Failed: $message';
-          });
-          _loadRewardedAd(); // Try next ad type on failure
+          setState(() => _isInterstitialLoaded = false);
         },
-        onStart: (placementId) => setState(() => _currentStatus = 'Interstitial Ad Started'),
+        onStart: (placementId) => print('Ad Started'),
         onClick: (placementId) => print('Ad Clicked'),
       );
     }
   }
 
-  void _loadRewardedAd({int retryCount = 0}) {
+  void _loadRewardedAd() {
     if (!_isUnityAdsInitialized) return;
-    
-    setState(() => _currentStatus = 'Loading Rewarded Ad...');
+
     UnityAds.load(
       placementId: 'Rewarded_iOS',
       onComplete: (placementId) {
-        setState(() {
-          _isRewardedLoaded = true;
-          _currentStatus = 'Rewarded Ad Loaded';
-        });
-        if (_isAutoPlayEnabled) {
-          _showRewardedAd();
-        }
+        setState(() => _isRewardedLoaded = true);
       },
       onFailed: (placementId, error, message) {
         print('Load Failed: $message');
-        setState(() {
-          _isRewardedLoaded = false;
-          _currentStatus = 'Rewarded Load Failed: $message';
-        });
-        _retryLoadAd('Rewarded', retryCount: retryCount);
-        if (retryCount >= 3) {
-          _loadInterstitialAd(); // Try interstitial ad after 3 retries
-        }
+        setState(() => _isRewardedLoaded = false);
       },
     );
   }
 
   void _showRewardedAd() {
     if (_isRewardedLoaded) {
-      setState(() => _currentStatus = 'Showing Rewarded Ad...');
       UnityAds.showVideoAd(
         placementId: 'Rewarded_iOS',
-        onComplete: (placementId) {
+        onComplete: (placementId) async {
           setState(() {
             _isRewardedLoaded = false;
             _coins += 10;
-            _currentStatus = 'Rewarded Ad Completed';
           });
-          _loadInterstitialAd(); // Immediately start next ad
+          await _resetUnityAds();
         },
         onFailed: (placementId, error, message) {
           print('Show Failed: $message');
-          setState(() {
-            _isRewardedLoaded = false;
-            _currentStatus = 'Rewarded Show Failed: $message';
-          });
-          _loadInterstitialAd(); // Try next ad type on failure
+          setState(() => _isRewardedLoaded = false);
         },
-        onStart: (placementId) => setState(() => _currentStatus = 'Rewarded Ad Started'),
+        onStart: (placementId) => print('Ad Started'),
         onClick: (placementId) => print('Ad Clicked'),
       );
     }
@@ -257,13 +254,41 @@ class _MyHomePageState extends State<MyHomePage> {
                 children: [
                   Text(
                     'IP Address: $_ipAddress',
-                    style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                    style: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
                   const SizedBox(height: 8),
                   Text(
                     'Country: $_country',
-                    style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                    style: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'GPS: $_gpsCoordinates',
+                    style: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Address: $_gpsAddress',
+                    style: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  _isLoadingLocation
+                      ? const Padding(
+                        padding: EdgeInsets.only(top: 8.0),
+                        child: CircularProgressIndicator(),
+                      )
+                      : const SizedBox.shrink(),
                 ],
               ),
             ),
@@ -272,36 +297,39 @@ class _MyHomePageState extends State<MyHomePage> {
               'Coins: $_coins',
               style: Theme.of(context).textTheme.headlineMedium,
             ),
-            const SizedBox(height: 20),
-            Container(
-              padding: const EdgeInsets.all(16),
-              margin: const EdgeInsets.symmetric(horizontal: 16),
-              decoration: BoxDecoration(
-                color: Colors.blue.withOpacity(0.1),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Text(
-                _currentStatus,
-                style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                textAlign: TextAlign.center,
-              ),
-            ),
             const SizedBox(height: 30),
             ElevatedButton(
-              onPressed: () {
-                setState(() {
-                  _isAutoPlayEnabled = !_isAutoPlayEnabled;
-                  if (_isAutoPlayEnabled) {
-                    _startAdSequence();
-                  }
-                });
-              },
+              onPressed:
+                  !_isInterstitialLoaded
+                      ? _loadInterstitialAd
+                      : _showInterstitialAd,
               style: ElevatedButton.styleFrom(
-                padding: const EdgeInsets.symmetric(horizontal: 30, vertical: 15),
-                backgroundColor: _isAutoPlayEnabled ? Colors.green : Colors.red,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 30,
+                  vertical: 15,
+                ),
+                backgroundColor:
+                    _isInterstitialLoaded ? Colors.blue : Colors.grey,
               ),
               child: Text(
-                _isAutoPlayEnabled ? 'Stop Auto Play' : 'Start Auto Play',
+                _isInterstitialLoaded
+                    ? 'Show Interstitial Ad'
+                    : 'Load Interstitial Ad',
+                style: const TextStyle(fontSize: 18),
+              ),
+            ),
+            const SizedBox(height: 20),
+            ElevatedButton(
+              onPressed: !_isRewardedLoaded ? _loadRewardedAd : _showRewardedAd,
+              style: ElevatedButton.styleFrom(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 30,
+                  vertical: 15,
+                ),
+                backgroundColor: _isRewardedLoaded ? Colors.blue : Colors.grey,
+              ),
+              child: Text(
+                _isRewardedLoaded ? 'Show Rewarded Ad' : 'Load Rewarded Ad',
                 style: const TextStyle(fontSize: 18),
               ),
             ),
