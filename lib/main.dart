@@ -19,6 +19,7 @@ class MyApp extends StatelessWidget {
       title: 'Unity Ads Demo',
       theme: ThemeData(primarySwatch: Colors.blue, useMaterial3: true),
       home: const MyHomePage(),
+      debugShowCheckedModeBanner: false,
     );
   }
 }
@@ -34,10 +35,10 @@ class _MyHomePageState extends State<MyHomePage> {
   bool _isInterstitialLoaded = false;
   bool _isRewardedLoaded = false;
   int _coins = 0;
-  String _ipAddress = '';
-  String _country = '';
-  String _gpsCoordinates = '';
-  String _gpsAddress = '';
+  String _ipAddress = 'Loading...';
+  String _country = 'Loading...';
+  String _gpsCoordinates = 'Loading...';
+  String _gpsAddress = 'Loading...';
   bool _isUnityAdsInitialized = false;
   bool _isLoadingLocation = false;
   String _currentGameId = '';
@@ -133,15 +134,26 @@ class _MyHomePageState extends State<MyHomePage> {
           _ipAddress = data['ip'] ?? 'Unknown';
           _country = data['country_name'] ?? 'Unknown';
         });
+      } else {
+        setState(() {
+          _ipAddress = 'Failed to load';
+          _country = 'Failed to load';
+        });
       }
     } catch (e) {
       print('Error getting IP location: $e');
+      setState(() {
+        _ipAddress = 'Error loading';
+        _country = 'Error loading';
+      });
     }
   }
 
   Future<void> _getGpsLocation() async {
     setState(() {
       _isLoadingLocation = true;
+      _gpsCoordinates = 'Detecting...';
+      _gpsAddress = 'Detecting...';
     });
 
     try {
@@ -151,8 +163,8 @@ class _MyHomePageState extends State<MyHomePage> {
         permission = await Geolocator.requestPermission();
         if (permission == LocationPermission.denied) {
           setState(() {
-            _gpsCoordinates = 'Location permissions denied';
-            _gpsAddress = 'Cannot determine address';
+            _gpsCoordinates = 'Permission denied';
+            _gpsAddress = 'Permission denied';
             _isLoadingLocation = false;
           });
           return;
@@ -161,8 +173,8 @@ class _MyHomePageState extends State<MyHomePage> {
 
       if (permission == LocationPermission.deniedForever) {
         setState(() {
-          _gpsCoordinates = 'Location permissions permanently denied';
-          _gpsAddress = 'Cannot determine address';
+          _gpsCoordinates = 'Permission denied forever';
+          _gpsAddress = 'Permission denied forever';
           _isLoadingLocation = false;
         });
         return;
@@ -188,7 +200,10 @@ class _MyHomePageState extends State<MyHomePage> {
           Placemark place = placemarks[0];
           setState(() {
             _gpsAddress =
-                '${place.street}, ${place.locality}, ${place.country}';
+                '${place.street ?? ''}, ${place.locality ?? ''}, ${place.country ?? ''}';
+            if (_gpsAddress.startsWith(', ')) {
+              _gpsAddress = _gpsAddress.substring(2);
+            }
           });
         }
       } catch (e) {
@@ -211,15 +226,23 @@ class _MyHomePageState extends State<MyHomePage> {
   }
 
   Future<void> _initUnityAds() async {
-    await UnityAds.init(
-      gameId: _currentGameId,
-      testMode: false,
-      onComplete: () {
-        setState(() => _isUnityAdsInitialized = true);
-        print('Initialization Complete with Game ID: $_currentGameId');
-      },
-      onFailed: (error, message) => print('Initialization Failed: $message'),
-    );
+    try {
+      await UnityAds.init(
+        gameId: _currentGameId,
+        testMode: false,
+        onComplete: () {
+          setState(() => _isUnityAdsInitialized = true);
+          print('Initialization Complete with Game ID: $_currentGameId');
+        },
+        onFailed: (error, message) {
+          print('Initialization Failed: $message');
+          setState(() => _isUnityAdsInitialized = false);
+        },
+      );
+    } catch (e) {
+      print('Error initializing Unity Ads: $e');
+      setState(() => _isUnityAdsInitialized = false);
+    }
   }
 
   Future<void> _resetUnityAds() async {
@@ -235,83 +258,109 @@ class _MyHomePageState extends State<MyHomePage> {
   void _loadInterstitialAd() {
     if (!_isUnityAdsInitialized) {
       print('Unity Ads not initialized yet. Current Game ID: $_currentGameId');
+      _initUnityAds().then((_) {
+        _loadInterstitialAd();
+      });
       return;
     }
 
-    UnityAds.load(
-      placementId: 'Interstitial_iOS',
-      onComplete: (placementId) {
-        setState(() => _isInterstitialLoaded = true);
-        print('Interstitial Ad loaded with Game ID: $_currentGameId');
-      },
-      onFailed: (placementId, error, message) {
-        print('Load Failed: $message');
-        setState(() => _isInterstitialLoaded = false);
-      },
-    );
+    try {
+      UnityAds.load(
+        placementId: 'Interstitial_iOS',
+        onComplete: (placementId) {
+          setState(() => _isInterstitialLoaded = true);
+          print('Interstitial Ad loaded with Game ID: $_currentGameId');
+        },
+        onFailed: (placementId, error, message) {
+          print('Load Failed: $message');
+          setState(() => _isInterstitialLoaded = false);
+        },
+      );
+    } catch (e) {
+      print('Error loading interstitial ad: $e');
+      setState(() => _isInterstitialLoaded = false);
+    }
   }
 
   void _showInterstitialAd() {
     if (_isInterstitialLoaded) {
-      UnityAds.showVideoAd(
-        placementId: 'Interstitial_iOS',
-        onComplete: (placementId) async {
-          setState(() {
-            _isInterstitialLoaded = false;
-            _interstitialAdsWatched++;
-          });
-          await _resetUnityAds();
-        },
-        onFailed: (placementId, error, message) {
-          print('Show Failed: $message');
-          setState(() => _isInterstitialLoaded = false);
-          _selectRandomGameId();
-        },
-        onStart: (placementId) => print('Ad Started'),
-        onClick: (placementId) => print('Ad Clicked'),
-      );
+      try {
+        UnityAds.showVideoAd(
+          placementId: 'Interstitial_iOS',
+          onComplete: (placementId) async {
+            setState(() {
+              _isInterstitialLoaded = false;
+              _interstitialAdsWatched++;
+            });
+            await _resetUnityAds();
+          },
+          onFailed: (placementId, error, message) {
+            print('Show Failed: $message');
+            setState(() => _isInterstitialLoaded = false);
+            _selectRandomGameId();
+          },
+          onStart: (placementId) => print('Ad Started'),
+          onClick: (placementId) => print('Ad Clicked'),
+        );
+      } catch (e) {
+        print('Error showing interstitial ad: $e');
+        setState(() => _isInterstitialLoaded = false);
+      }
     }
   }
 
   void _loadRewardedAd() {
     if (!_isUnityAdsInitialized) {
       print('Unity Ads not initialized yet. Current Game ID: $_currentGameId');
+      _initUnityAds().then((_) {
+        _loadRewardedAd();
+      });
       return;
     }
 
-    UnityAds.load(
-      placementId: 'Rewarded_iOS',
-      onComplete: (placementId) {
-        setState(() => _isRewardedLoaded = true);
-        print('Rewarded Ad loaded with Game ID: $_currentGameId');
-      },
-      onFailed: (placementId, error, message) {
-        print('Load Failed: $message');
-        setState(() => _isRewardedLoaded = false);
-      },
-    );
+    try {
+      UnityAds.load(
+        placementId: 'Rewarded_iOS',
+        onComplete: (placementId) {
+          setState(() => _isRewardedLoaded = true);
+          print('Rewarded Ad loaded with Game ID: $_currentGameId');
+        },
+        onFailed: (placementId, error, message) {
+          print('Load Failed: $message');
+          setState(() => _isRewardedLoaded = false);
+        },
+      );
+    } catch (e) {
+      print('Error loading rewarded ad: $e');
+      setState(() => _isRewardedLoaded = false);
+    }
   }
 
   void _showRewardedAd() {
     if (_isRewardedLoaded) {
-      UnityAds.showVideoAd(
-        placementId: 'Rewarded_iOS',
-        onComplete: (placementId) async {
-          setState(() {
-            _isRewardedLoaded = false;
-            _coins += 10;
-            _rewardedAdsWatched++;
-          });
-          await _resetUnityAds();
-        },
-        onFailed: (placementId, error, message) {
-          print('Show Failed: $message');
-          setState(() => _isRewardedLoaded = false);
-          _selectRandomGameId();
-        },
-        onStart: (placementId) => print('Ad Started'),
-        onClick: (placementId) => print('Ad Clicked'),
-      );
+      try {
+        UnityAds.showVideoAd(
+          placementId: 'Rewarded_iOS',
+          onComplete: (placementId) async {
+            setState(() {
+              _isRewardedLoaded = false;
+              _coins += 10;
+              _rewardedAdsWatched++;
+            });
+            await _resetUnityAds();
+          },
+          onFailed: (placementId, error, message) {
+            print('Show Failed: $message');
+            setState(() => _isRewardedLoaded = false);
+            _selectRandomGameId();
+          },
+          onStart: (placementId) => print('Ad Started'),
+          onClick: (placementId) => print('Ad Clicked'),
+        );
+      } catch (e) {
+        print('Error showing rewarded ad: $e');
+        setState(() => _isRewardedLoaded = false);
+      }
     }
   }
 
@@ -356,54 +405,74 @@ class _MyHomePageState extends State<MyHomePage> {
                       ),
                     ),
                     const Divider(thickness: 1),
-                    const Text(
-                      'Location Information:',
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                        decoration: TextDecoration.underline,
-                      ),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text(
+                          'IP Address:',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        Text(_ipAddress, style: const TextStyle(fontSize: 16)),
+                      ],
                     ),
                     const SizedBox(height: 8),
-                    Text(
-                      'IP Address: $_ipAddress',
-                      style: const TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                      ),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text(
+                          'Country:',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        Text(_country, style: const TextStyle(fontSize: 16)),
+                      ],
                     ),
                     const SizedBox(height: 8),
-                    Text(
-                      'Country: $_country',
-                      style: const TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                      ),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text(
+                          'GPS:',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        Flexible(
+                          child: Text(
+                            _gpsCoordinates,
+                            style: const TextStyle(fontSize: 16),
+                            textAlign: TextAlign.right,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ],
                     ),
                     const SizedBox(height: 8),
-                    const Text(
-                      'GPS Information:',
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                        decoration: TextDecoration.underline,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      'Coordinates: $_gpsCoordinates',
-                      style: const TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      'Address: $_gpsAddress',
-                      style: const TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                      ),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'Address:',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        Flexible(
+                          child: Text(
+                            _gpsAddress,
+                            style: const TextStyle(fontSize: 16),
+                            textAlign: TextAlign.right,
+                          ),
+                        ),
+                      ],
                     ),
                     _isLoadingLocation
                         ? const Padding(
@@ -492,41 +561,53 @@ class _MyHomePageState extends State<MyHomePage> {
                 style: Theme.of(context).textTheme.headlineMedium,
               ),
               const SizedBox(height: 30),
-              ElevatedButton(
-                onPressed:
-                    !_isInterstitialLoaded
-                        ? _loadInterstitialAd
-                        : _showInterstitialAd,
-                style: ElevatedButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 30,
-                    vertical: 15,
+              Container(
+                width: 250,
+                child: ElevatedButton(
+                  onPressed:
+                      !_isInterstitialLoaded
+                          ? _loadInterstitialAd
+                          : _showInterstitialAd,
+                  style: ElevatedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 30,
+                      vertical: 15,
+                    ),
+                    backgroundColor:
+                        _isInterstitialLoaded ? Colors.blue : Colors.grey,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(30),
+                    ),
                   ),
-                  backgroundColor:
-                      _isInterstitialLoaded ? Colors.blue : Colors.grey,
-                ),
-                child: Text(
-                  _isInterstitialLoaded
-                      ? 'Show Interstitial Ad'
-                      : 'Load Interstitial Ad',
-                  style: const TextStyle(fontSize: 18),
+                  child: Text(
+                    _isInterstitialLoaded
+                        ? 'Show Interstitial Ad'
+                        : 'Load Interstitial Ad',
+                    style: const TextStyle(fontSize: 18, color: Colors.white),
+                  ),
                 ),
               ),
               const SizedBox(height: 20),
-              ElevatedButton(
-                onPressed:
-                    !_isRewardedLoaded ? _loadRewardedAd : _showRewardedAd,
-                style: ElevatedButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 30,
-                    vertical: 15,
+              Container(
+                width: 250,
+                child: ElevatedButton(
+                  onPressed:
+                      !_isRewardedLoaded ? _loadRewardedAd : _showRewardedAd,
+                  style: ElevatedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 30,
+                      vertical: 15,
+                    ),
+                    backgroundColor:
+                        _isRewardedLoaded ? Colors.blue : Colors.grey,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(30),
+                    ),
                   ),
-                  backgroundColor:
-                      _isRewardedLoaded ? Colors.blue : Colors.grey,
-                ),
-                child: Text(
-                  _isRewardedLoaded ? 'Show Rewarded Ad' : 'Load Rewarded Ad',
-                  style: const TextStyle(fontSize: 18),
+                  child: Text(
+                    _isRewardedLoaded ? 'Show Rewarded Ad' : 'Load Rewarded Ad',
+                    style: const TextStyle(fontSize: 18, color: Colors.white),
+                  ),
                 ),
               ),
               const SizedBox(height: 20),
