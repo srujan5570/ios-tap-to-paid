@@ -1,0 +1,66 @@
+name: iOS-ipa-build
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ master ]
+
+jobs:
+  build-ios:
+    name: 🎉 iOS Build
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+          architecture: x64
+      
+      - name: Install dependencies
+        run: flutter pub get
+      
+      - name: Update CocoaPods repos
+        run: pod repo update
+        working-directory: ios
+
+      - name: Install CocoaPods dependencies
+        run: pod install
+        working-directory: ios
+      
+      - name: Build iOS
+        run: flutter build ios --release --no-codesign
+
+      - name: Create Payload directory
+        run: mkdir Payload
+        working-directory: build/ios/iphoneos
+
+      - name: Move app to Payload directory
+        run: mv Runner.app/ Payload
+        working-directory: build/ios/iphoneos
+
+      - name: Create IPA file
+        run: zip -qq -r -9 UnityAdsDemo.ipa Payload
+        working-directory: build/ios/iphoneos
+
+      - name: Create Release
+        id: create_release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: v1.0.${{ github.run_number }}
+          release_name: Release v1.0.${{ github.run_number }}
+          draft: false
+          prerelease: false
+          body: "Unity Ads Demo App Release"
+
+      - name: Upload IPA to Release
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: build/ios/iphoneos/UnityAdsDemo.ipa
+          asset_name: UnityAdsDemo.ipa
+          asset_content_type: application/octet-stream 
