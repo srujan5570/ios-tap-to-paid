@@ -41,6 +41,8 @@ class _MyHomePageState extends State<MyHomePage> {
   bool _isUnityAdsInitialized = false;
   bool _isLoadingLocation = false;
   String _currentGameId = '';
+  int _interstitialAdsWatched = 0;
+  int _rewardedAdsWatched = 0;
 
   // List of game IDs
   final List<String> _gameIds = [
@@ -254,7 +256,10 @@ class _MyHomePageState extends State<MyHomePage> {
       UnityAds.showVideoAd(
         placementId: 'Interstitial_iOS',
         onComplete: (placementId) async {
-          setState(() => _isInterstitialLoaded = false);
+          setState(() {
+            _isInterstitialLoaded = false;
+            _interstitialAdsWatched++;
+          });
           await _resetUnityAds();
         },
         onFailed: (placementId, error, message) {
@@ -295,6 +300,7 @@ class _MyHomePageState extends State<MyHomePage> {
           setState(() {
             _isRewardedLoaded = false;
             _coins += 10;
+            _rewardedAdsWatched++;
           });
           await _resetUnityAds();
         },
@@ -316,118 +322,216 @@ class _MyHomePageState extends State<MyHomePage> {
         title: const Text('Unity Ads Demo'),
         backgroundColor: Theme.of(context).colorScheme.inversePrimary,
       ),
-      body: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Container(
-              padding: const EdgeInsets.all(16),
-              margin: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: Colors.grey[200],
-                borderRadius: BorderRadius.circular(12),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.grey.withOpacity(0.3),
-                    spreadRadius: 1,
-                    blurRadius: 5,
-                    offset: const Offset(0, 2),
-                  ),
-                ],
-              ),
-              child: Column(
-                children: [
-                  Text(
-                    'Game ID: $_currentGameId',
-                    style: const TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.red,
+      body: SingleChildScrollView(
+        child: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(16),
+                margin: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: Colors.grey[200],
+                  borderRadius: BorderRadius.circular(12),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.grey.withOpacity(0.3),
+                      spreadRadius: 1,
+                      blurRadius: 5,
+                      offset: const Offset(0, 2),
                     ),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    'IP Address: $_ipAddress',
-                    style: const TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    'Country: $_country',
-                    style: const TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    'GPS: $_gpsCoordinates',
-                    style: const TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    'Address: $_gpsAddress',
-                    style: const TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  _isLoadingLocation
-                      ? const Padding(
-                        padding: EdgeInsets.only(top: 8.0),
-                        child: CircularProgressIndicator(),
-                      )
-                      : const SizedBox.shrink(),
-                ],
-              ),
-            ),
-            const SizedBox(height: 20),
-            Text(
-              'Coins: $_coins',
-              style: Theme.of(context).textTheme.headlineMedium,
-            ),
-            const SizedBox(height: 30),
-            ElevatedButton(
-              onPressed:
-                  !_isInterstitialLoaded
-                      ? _loadInterstitialAd
-                      : _showInterstitialAd,
-              style: ElevatedButton.styleFrom(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 30,
-                  vertical: 15,
+                  ],
                 ),
-                backgroundColor:
-                    _isInterstitialLoaded ? Colors.blue : Colors.grey,
-              ),
-              child: Text(
-                _isInterstitialLoaded
-                    ? 'Show Interstitial Ad'
-                    : 'Load Interstitial Ad',
-                style: const TextStyle(fontSize: 18),
-              ),
-            ),
-            const SizedBox(height: 20),
-            ElevatedButton(
-              onPressed: !_isRewardedLoaded ? _loadRewardedAd : _showRewardedAd,
-              style: ElevatedButton.styleFrom(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 30,
-                  vertical: 15,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Center(
+                      child: Text(
+                        'Current Game ID: $_currentGameId',
+                        style: const TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.red,
+                        ),
+                      ),
+                    ),
+                    const Divider(thickness: 1),
+                    const Text(
+                      'Location Information:',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                        decoration: TextDecoration.underline,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'IP Address: $_ipAddress',
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'Country: $_country',
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    const Text(
+                      'GPS Information:',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                        decoration: TextDecoration.underline,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'Coordinates: $_gpsCoordinates',
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'Address: $_gpsAddress',
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    _isLoadingLocation
+                        ? const Padding(
+                          padding: EdgeInsets.only(top: 8.0),
+                          child: Center(child: CircularProgressIndicator()),
+                        )
+                        : const SizedBox.shrink(),
+                  ],
                 ),
-                backgroundColor: _isRewardedLoaded ? Colors.blue : Colors.grey,
               ),
-              child: Text(
-                _isRewardedLoaded ? 'Show Rewarded Ad' : 'Load Rewarded Ad',
-                style: const TextStyle(fontSize: 18),
+              Container(
+                padding: const EdgeInsets.all(16),
+                margin: const EdgeInsets.symmetric(horizontal: 16),
+                decoration: BoxDecoration(
+                  color: Colors.blue[100],
+                  borderRadius: BorderRadius.circular(12),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.grey.withOpacity(0.3),
+                      spreadRadius: 1,
+                      blurRadius: 5,
+                      offset: const Offset(0, 2),
+                    ),
+                  ],
+                ),
+                child: Column(
+                  children: [
+                    const Text(
+                      'Ad Statistics',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                        decoration: TextDecoration.underline,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                      children: [
+                        Column(
+                          children: [
+                            const Text(
+                              'Interstitial Ads',
+                              style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            Text(
+                              '$_interstitialAdsWatched',
+                              style: const TextStyle(
+                                fontSize: 24,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.blue,
+                              ),
+                            ),
+                          ],
+                        ),
+                        Column(
+                          children: [
+                            const Text(
+                              'Rewarded Ads',
+                              style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            Text(
+                              '$_rewardedAdsWatched',
+                              style: const TextStyle(
+                                fontSize: 24,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.green,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
               ),
-            ),
-          ],
+              const SizedBox(height: 20),
+              Text(
+                'Coins: $_coins',
+                style: Theme.of(context).textTheme.headlineMedium,
+              ),
+              const SizedBox(height: 30),
+              ElevatedButton(
+                onPressed:
+                    !_isInterstitialLoaded
+                        ? _loadInterstitialAd
+                        : _showInterstitialAd,
+                style: ElevatedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 30,
+                    vertical: 15,
+                  ),
+                  backgroundColor:
+                      _isInterstitialLoaded ? Colors.blue : Colors.grey,
+                ),
+                child: Text(
+                  _isInterstitialLoaded
+                      ? 'Show Interstitial Ad'
+                      : 'Load Interstitial Ad',
+                  style: const TextStyle(fontSize: 18),
+                ),
+              ),
+              const SizedBox(height: 20),
+              ElevatedButton(
+                onPressed:
+                    !_isRewardedLoaded ? _loadRewardedAd : _showRewardedAd,
+                style: ElevatedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 30,
+                    vertical: 15,
+                  ),
+                  backgroundColor:
+                      _isRewardedLoaded ? Colors.blue : Colors.grey,
+                ),
+                child: Text(
+                  _isRewardedLoaded ? 'Show Rewarded Ad' : 'Load Rewarded Ad',
+                  style: const TextStyle(fontSize: 18),
+                ),
+              ),
+              const SizedBox(height: 20),
+            ],
+          ),
         ),
       ),
     );
