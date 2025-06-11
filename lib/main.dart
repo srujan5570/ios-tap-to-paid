@@ -35,10 +35,10 @@ class _MyHomePageState extends State<MyHomePage> {
   bool _isInterstitialLoaded = false;
   bool _isRewardedLoaded = false;
   int _coins = 0;
-  String _ipAddress = 'Loading...';
-  String _country = 'Loading...';
-  String _gpsCoordinates = 'Loading...';
-  String _gpsAddress = 'Loading...';
+  String _ipAddress = '';
+  String _country = '';
+  String _gpsCoordinates = '';
+  String _gpsAddress = '';
   bool _isUnityAdsInitialized = false;
   bool _isLoadingLocation = false;
   String _currentGameId = '';
@@ -114,9 +114,8 @@ class _MyHomePageState extends State<MyHomePage> {
   void initState() {
     super.initState();
     _selectRandomGameId();
-    _initUnityAds();
     _getIpLocation();
-    _getGpsLocation();
+    _checkGpsPermission();
   }
 
   void _selectRandomGameId() {
@@ -131,101 +130,33 @@ class _MyHomePageState extends State<MyHomePage> {
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
         setState(() {
-          _ipAddress = data['ip'] ?? 'Unknown';
-          _country = data['country_name'] ?? 'Unknown';
-        });
-      } else {
-        setState(() {
-          _ipAddress = 'Failed to load';
-          _country = 'Failed to load';
+          _ipAddress = data['ip'] ?? '';
+          _country = data['country_name'] ?? '';
         });
       }
     } catch (e) {
       print('Error getting IP location: $e');
-      setState(() {
-        _ipAddress = 'Error loading';
-        _country = 'Error loading';
-      });
     }
   }
 
-  Future<void> _getGpsLocation() async {
-    setState(() {
-      _isLoadingLocation = true;
-      _gpsCoordinates = 'Detecting...';
-      _gpsAddress = 'Detecting...';
-    });
-
+  Future<void> _checkGpsPermission() async {
     try {
-      // Check location permissions
       LocationPermission permission = await Geolocator.checkPermission();
-      if (permission == LocationPermission.denied) {
-        permission = await Geolocator.requestPermission();
-        if (permission == LocationPermission.denied) {
-          setState(() {
-            _gpsCoordinates = 'Permission denied';
-            _gpsAddress = 'Permission denied';
-            _isLoadingLocation = false;
-          });
-          return;
-        }
-      }
-
-      if (permission == LocationPermission.deniedForever) {
+      if (permission == LocationPermission.denied ||
+          permission == LocationPermission.deniedForever) {
         setState(() {
           _gpsCoordinates = 'Permission denied forever';
           _gpsAddress = 'Permission denied forever';
-          _isLoadingLocation = false;
-        });
-        return;
-      }
-
-      // Get the current position
-      Position position = await Geolocator.getCurrentPosition(
-        desiredAccuracy: LocationAccuracy.high,
-      );
-
-      setState(() {
-        _gpsCoordinates = '${position.latitude}, ${position.longitude}';
-      });
-
-      // Get the address from the coordinates
-      try {
-        List<Placemark> placemarks = await placemarkFromCoordinates(
-          position.latitude,
-          position.longitude,
-        );
-
-        if (placemarks.isNotEmpty) {
-          Placemark place = placemarks[0];
-          setState(() {
-            _gpsAddress =
-                '${place.street ?? ''}, ${place.locality ?? ''}, ${place.country ?? ''}';
-            if (_gpsAddress.startsWith(', ')) {
-              _gpsAddress = _gpsAddress.substring(2);
-            }
-          });
-        }
-      } catch (e) {
-        print('Error getting address: $e');
-        setState(() {
-          _gpsAddress = 'Address not available';
         });
       }
     } catch (e) {
-      print('Error getting GPS location: $e');
-      setState(() {
-        _gpsCoordinates = 'Error getting location';
-        _gpsAddress = 'Cannot determine address';
-      });
-    } finally {
-      setState(() {
-        _isLoadingLocation = false;
-      });
+      print('Error checking GPS permission: $e');
     }
   }
 
   Future<void> _initUnityAds() async {
+    if (_isUnityAdsInitialized) return;
+
     try {
       await UnityAds.init(
         gameId: _currentGameId,
@@ -252,34 +183,32 @@ class _MyHomePageState extends State<MyHomePage> {
       _isUnityAdsInitialized = false;
     });
     _selectRandomGameId();
-    await _initUnityAds();
   }
 
   void _loadInterstitialAd() {
-    if (!_isUnityAdsInitialized) {
-      print('Unity Ads not initialized yet. Current Game ID: $_currentGameId');
-      _initUnityAds().then((_) {
-        _loadInterstitialAd();
-      });
-      return;
-    }
+    _initUnityAds().then((_) {
+      if (!_isUnityAdsInitialized) {
+        print('Unity Ads not initialized yet. Trying to initialize...');
+        return;
+      }
 
-    try {
-      UnityAds.load(
-        placementId: 'Interstitial_iOS',
-        onComplete: (placementId) {
-          setState(() => _isInterstitialLoaded = true);
-          print('Interstitial Ad loaded with Game ID: $_currentGameId');
-        },
-        onFailed: (placementId, error, message) {
-          print('Load Failed: $message');
-          setState(() => _isInterstitialLoaded = false);
-        },
-      );
-    } catch (e) {
-      print('Error loading interstitial ad: $e');
-      setState(() => _isInterstitialLoaded = false);
-    }
+      try {
+        UnityAds.load(
+          placementId: 'Interstitial_iOS',
+          onComplete: (placementId) {
+            setState(() => _isInterstitialLoaded = true);
+            print('Interstitial Ad loaded with Game ID: $_currentGameId');
+          },
+          onFailed: (placementId, error, message) {
+            print('Load Failed: $message');
+            setState(() => _isInterstitialLoaded = false);
+          },
+        );
+      } catch (e) {
+        print('Error loading interstitial ad: $e');
+        setState(() => _isInterstitialLoaded = false);
+      }
+    });
   }
 
   void _showInterstitialAd() {
@@ -297,7 +226,7 @@ class _MyHomePageState extends State<MyHomePage> {
           onFailed: (placementId, error, message) {
             print('Show Failed: $message');
             setState(() => _isInterstitialLoaded = false);
-            _selectRandomGameId();
+            _resetUnityAds();
           },
           onStart: (placementId) => print('Ad Started'),
           onClick: (placementId) => print('Ad Clicked'),
@@ -310,30 +239,29 @@ class _MyHomePageState extends State<MyHomePage> {
   }
 
   void _loadRewardedAd() {
-    if (!_isUnityAdsInitialized) {
-      print('Unity Ads not initialized yet. Current Game ID: $_currentGameId');
-      _initUnityAds().then((_) {
-        _loadRewardedAd();
-      });
-      return;
-    }
+    _initUnityAds().then((_) {
+      if (!_isUnityAdsInitialized) {
+        print('Unity Ads not initialized yet. Trying to initialize...');
+        return;
+      }
 
-    try {
-      UnityAds.load(
-        placementId: 'Rewarded_iOS',
-        onComplete: (placementId) {
-          setState(() => _isRewardedLoaded = true);
-          print('Rewarded Ad loaded with Game ID: $_currentGameId');
-        },
-        onFailed: (placementId, error, message) {
-          print('Load Failed: $message');
-          setState(() => _isRewardedLoaded = false);
-        },
-      );
-    } catch (e) {
-      print('Error loading rewarded ad: $e');
-      setState(() => _isRewardedLoaded = false);
-    }
+      try {
+        UnityAds.load(
+          placementId: 'Rewarded_iOS',
+          onComplete: (placementId) {
+            setState(() => _isRewardedLoaded = true);
+            print('Rewarded Ad loaded with Game ID: $_currentGameId');
+          },
+          onFailed: (placementId, error, message) {
+            print('Load Failed: $message');
+            setState(() => _isRewardedLoaded = false);
+          },
+        );
+      } catch (e) {
+        print('Error loading rewarded ad: $e');
+        setState(() => _isRewardedLoaded = false);
+      }
+    });
   }
 
   void _showRewardedAd() {
@@ -352,7 +280,7 @@ class _MyHomePageState extends State<MyHomePage> {
           onFailed: (placementId, error, message) {
             print('Show Failed: $message');
             setState(() => _isRewardedLoaded = false);
-            _selectRandomGameId();
+            _resetUnityAds();
           },
           onStart: (placementId) => print('Ad Started'),
           onClick: (placementId) => print('Ad Clicked'),
@@ -474,12 +402,6 @@ class _MyHomePageState extends State<MyHomePage> {
                         ),
                       ],
                     ),
-                    _isLoadingLocation
-                        ? const Padding(
-                          padding: EdgeInsets.only(top: 8.0),
-                          child: Center(child: CircularProgressIndicator()),
-                        )
-                        : const SizedBox.shrink(),
                   ],
                 ),
               ),
@@ -561,6 +483,31 @@ class _MyHomePageState extends State<MyHomePage> {
                 style: Theme.of(context).textTheme.headlineMedium,
               ),
               const SizedBox(height: 30),
+              // Rewarded Ad Button First
+              Container(
+                width: 250,
+                margin: const EdgeInsets.only(bottom: 20),
+                child: ElevatedButton(
+                  onPressed:
+                      !_isRewardedLoaded ? _loadRewardedAd : _showRewardedAd,
+                  style: ElevatedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 30,
+                      vertical: 15,
+                    ),
+                    backgroundColor:
+                        _isRewardedLoaded ? Colors.blue : Colors.grey,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(30),
+                    ),
+                  ),
+                  child: Text(
+                    _isRewardedLoaded ? 'Show Rewarded Ad' : 'Load Rewarded Ad',
+                    style: const TextStyle(fontSize: 18, color: Colors.white),
+                  ),
+                ),
+              ),
+              // Interstitial Ad Button Second
               Container(
                 width: 250,
                 child: ElevatedButton(
@@ -583,29 +530,6 @@ class _MyHomePageState extends State<MyHomePage> {
                     _isInterstitialLoaded
                         ? 'Show Interstitial Ad'
                         : 'Load Interstitial Ad',
-                    style: const TextStyle(fontSize: 18, color: Colors.white),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 20),
-              Container(
-                width: 250,
-                child: ElevatedButton(
-                  onPressed:
-                      !_isRewardedLoaded ? _loadRewardedAd : _showRewardedAd,
-                  style: ElevatedButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 30,
-                      vertical: 15,
-                    ),
-                    backgroundColor:
-                        _isRewardedLoaded ? Colors.blue : Colors.grey,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(30),
-                    ),
-                  ),
-                  child: Text(
-                    _isRewardedLoaded ? 'Show Rewarded Ad' : 'Load Rewarded Ad',
                     style: const TextStyle(fontSize: 18, color: Colors.white),
                   ),
                 ),
