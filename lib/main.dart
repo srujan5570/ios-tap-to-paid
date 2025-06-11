@@ -4,6 +4,7 @@ import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'package:geolocator/geolocator.dart';
 import 'package:geocoding/geocoding.dart';
+import 'dart:math';
 
 void main() {
   runApp(const MyApp());
@@ -39,13 +40,86 @@ class _MyHomePageState extends State<MyHomePage> {
   String _gpsAddress = '';
   bool _isUnityAdsInitialized = false;
   bool _isLoadingLocation = false;
+  String _currentGameId = '';
+
+  // List of game IDs
+  final List<String> _gameIds = [
+    '5861330',
+    '5859176',
+    '5861328',
+    '5861332',
+    '5861335',
+    '5861337',
+    '5861339',
+    '5861345',
+    '5861347',
+    '5861349',
+    '5861350',
+    '5861360',
+    '5861362',
+    '5861367',
+    '5861368',
+    '5861370',
+    '5861300',
+    '5861372',
+    '5861458',
+    '5861376',
+    '5861378',
+    '5861380',
+    '5861383',
+    '5861384',
+    '5861386',
+    '5861389',
+    '5861391',
+    '5861395',
+    '5861396',
+    '5861439',
+    '5861440',
+    '5861443',
+    '5861444',
+    '5861446',
+    '5861448',
+    '5861450',
+    '5861452',
+    '5861455',
+    '5861457',
+    '5861437',
+    '5861462',
+    '5861434',
+    '5861432',
+    '5861466',
+    '5861306',
+    '5861430',
+    '5861428',
+    '5861427',
+    '5861425',
+    '5861423',
+    '5861421',
+    '5861418',
+    '5861415',
+    '5861412',
+    '5861410',
+    '5861409',
+    '5861406',
+    '5861403',
+  ];
+
+  // Random number generator
+  final Random _random = Random();
 
   @override
   void initState() {
     super.initState();
+    _selectRandomGameId();
     _initUnityAds();
     _getIpLocation();
     _getGpsLocation();
+  }
+
+  void _selectRandomGameId() {
+    setState(() {
+      _currentGameId = _gameIds[_random.nextInt(_gameIds.length)];
+    });
   }
 
   Future<void> _getIpLocation() async {
@@ -136,11 +210,11 @@ class _MyHomePageState extends State<MyHomePage> {
 
   Future<void> _initUnityAds() async {
     await UnityAds.init(
-      gameId: '5859176',
+      gameId: _currentGameId,
       testMode: false,
       onComplete: () {
         setState(() => _isUnityAdsInitialized = true);
-        print('Initialization Complete');
+        print('Initialization Complete with Game ID: $_currentGameId');
       },
       onFailed: (error, message) => print('Initialization Failed: $message'),
     );
@@ -152,16 +226,21 @@ class _MyHomePageState extends State<MyHomePage> {
       _isRewardedLoaded = false;
       _isUnityAdsInitialized = false;
     });
+    _selectRandomGameId();
     await _initUnityAds();
   }
 
   void _loadInterstitialAd() {
-    if (!_isUnityAdsInitialized) return;
+    if (!_isUnityAdsInitialized) {
+      print('Unity Ads not initialized yet. Current Game ID: $_currentGameId');
+      return;
+    }
 
     UnityAds.load(
       placementId: 'Interstitial_iOS',
       onComplete: (placementId) {
         setState(() => _isInterstitialLoaded = true);
+        print('Interstitial Ad loaded with Game ID: $_currentGameId');
       },
       onFailed: (placementId, error, message) {
         print('Load Failed: $message');
@@ -181,6 +260,7 @@ class _MyHomePageState extends State<MyHomePage> {
         onFailed: (placementId, error, message) {
           print('Show Failed: $message');
           setState(() => _isInterstitialLoaded = false);
+          _selectRandomGameId();
         },
         onStart: (placementId) => print('Ad Started'),
         onClick: (placementId) => print('Ad Clicked'),
@@ -189,12 +269,16 @@ class _MyHomePageState extends State<MyHomePage> {
   }
 
   void _loadRewardedAd() {
-    if (!_isUnityAdsInitialized) return;
+    if (!_isUnityAdsInitialized) {
+      print('Unity Ads not initialized yet. Current Game ID: $_currentGameId');
+      return;
+    }
 
     UnityAds.load(
       placementId: 'Rewarded_iOS',
       onComplete: (placementId) {
         setState(() => _isRewardedLoaded = true);
+        print('Rewarded Ad loaded with Game ID: $_currentGameId');
       },
       onFailed: (placementId, error, message) {
         print('Load Failed: $message');
@@ -217,6 +301,7 @@ class _MyHomePageState extends State<MyHomePage> {
         onFailed: (placementId, error, message) {
           print('Show Failed: $message');
           setState(() => _isRewardedLoaded = false);
+          _selectRandomGameId();
         },
         onStart: (placementId) => print('Ad Started'),
         onClick: (placementId) => print('Ad Clicked'),
@@ -252,6 +337,15 @@ class _MyHomePageState extends State<MyHomePage> {
               ),
               child: Column(
                 children: [
+                  Text(
+                    'Game ID: $_currentGameId',
+                    style: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.red,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
                   Text(
                     'IP Address: $_ipAddress',
                     style: const TextStyle(
