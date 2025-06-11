@@ -31,7 +31,7 @@ class MyHomePage extends StatefulWidget {
   State<MyHomePage> createState() => _MyHomePageState();
 }
 
-class _MyHomePageState extends State<MyHomePage> {
+class _MyHomePageState extends State<MyHomePage> with WidgetsBindingObserver {
   bool _isInterstitialLoaded = false;
   bool _isRewardedLoaded = false;
   int _coins = 0;
@@ -113,9 +113,25 @@ class _MyHomePageState extends State<MyHomePage> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _selectRandomGameId();
     _getIpLocation();
     _checkGpsPermission();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      if (_ipAddress.isEmpty) {
+        _getIpLocation();
+      }
+    }
   }
 
   void _selectRandomGameId() {
@@ -126,17 +142,32 @@ class _MyHomePageState extends State<MyHomePage> {
 
   Future<void> _getIpLocation() async {
     try {
-      final response = await http.get(Uri.parse('https://ipapi.co/json/'));
+      final response = await http.get(
+        Uri.parse('https://ipapi.co/json/'),
+        headers: {'User-Agent': 'Unity-Ads-Demo/1.0'},
+      );
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
         setState(() {
           _ipAddress = data['ip'] ?? '';
           _country = data['country_name'] ?? '';
         });
+      } else {
+        print('Failed to load IP: ${response.statusCode}');
+        _retryGetIpLocation();
       }
     } catch (e) {
       print('Error getting IP location: $e');
+      _retryGetIpLocation();
     }
+  }
+
+  void _retryGetIpLocation() {
+    Future.delayed(const Duration(seconds: 1), () {
+      if (mounted && _ipAddress.isEmpty) {
+        _getIpLocation();
+      }
+    });
   }
 
   Future<void> _checkGpsPermission() async {
@@ -217,16 +248,21 @@ class _MyHomePageState extends State<MyHomePage> {
         UnityAds.showVideoAd(
           placementId: 'Interstitial_iOS',
           onComplete: (placementId) async {
-            setState(() {
-              _isInterstitialLoaded = false;
-              _interstitialAdsWatched++;
-            });
-            await _resetUnityAds();
+            if (mounted) {
+              setState(() {
+                _isInterstitialLoaded = false;
+                _interstitialAdsWatched++;
+                _coins += 5;
+              });
+              await _resetUnityAds();
+            }
           },
           onFailed: (placementId, error, message) {
             print('Show Failed: $message');
-            setState(() => _isInterstitialLoaded = false);
-            _resetUnityAds();
+            if (mounted) {
+              setState(() => _isInterstitialLoaded = false);
+              _resetUnityAds();
+            }
           },
           onStart: (placementId) => print('Ad Started'),
           onClick: (placementId) => print('Ad Clicked'),
@@ -270,17 +306,21 @@ class _MyHomePageState extends State<MyHomePage> {
         UnityAds.showVideoAd(
           placementId: 'Rewarded_iOS',
           onComplete: (placementId) async {
-            setState(() {
-              _isRewardedLoaded = false;
-              _coins += 10;
-              _rewardedAdsWatched++;
-            });
-            await _resetUnityAds();
+            if (mounted) {
+              setState(() {
+                _isRewardedLoaded = false;
+                _coins += 10;
+                _rewardedAdsWatched++;
+              });
+              await _resetUnityAds();
+            }
           },
           onFailed: (placementId, error, message) {
             print('Show Failed: $message');
-            setState(() => _isRewardedLoaded = false);
-            _resetUnityAds();
+            if (mounted) {
+              setState(() => _isRewardedLoaded = false);
+              _resetUnityAds();
+            }
           },
           onStart: (placementId) => print('Ad Started'),
           onClick: (placementId) => print('Ad Clicked'),
@@ -300,6 +340,7 @@ class _MyHomePageState extends State<MyHomePage> {
         backgroundColor: Theme.of(context).colorScheme.inversePrimary,
       ),
       body: SingleChildScrollView(
+        physics: const BouncingScrollPhysics(),
         child: Center(
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
