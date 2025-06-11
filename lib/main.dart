@@ -34,6 +34,8 @@ class MyHomePage extends StatefulWidget {
 class _MyHomePageState extends State<MyHomePage> with WidgetsBindingObserver {
   bool _isInterstitialLoaded = false;
   bool _isRewardedLoaded = false;
+  bool _isLoadingInterstitial = false;
+  bool _isLoadingRewarded = false;
   int _coins = 0;
   String _ipAddress = '';
   String _country = '';
@@ -217,9 +219,20 @@ class _MyHomePageState extends State<MyHomePage> with WidgetsBindingObserver {
   }
 
   void _loadInterstitialAd() {
+    setState(() {
+      _isLoadingInterstitial = true;
+    });
+
     _initUnityAds().then((_) {
       if (!_isUnityAdsInitialized) {
         print('Unity Ads not initialized yet. Trying to initialize...');
+        Future.delayed(const Duration(seconds: 2), () {
+          if (mounted) {
+            setState(() {
+              _isLoadingInterstitial = false;
+            });
+          }
+        });
         return;
       }
 
@@ -227,17 +240,32 @@ class _MyHomePageState extends State<MyHomePage> with WidgetsBindingObserver {
         UnityAds.load(
           placementId: 'Interstitial_iOS',
           onComplete: (placementId) {
-            setState(() => _isInterstitialLoaded = true);
-            print('Interstitial Ad loaded with Game ID: $_currentGameId');
+            if (mounted) {
+              setState(() {
+                _isInterstitialLoaded = true;
+                _isLoadingInterstitial = false;
+              });
+              print('Interstitial Ad loaded with Game ID: $_currentGameId');
+            }
           },
           onFailed: (placementId, error, message) {
             print('Load Failed: $message');
-            setState(() => _isInterstitialLoaded = false);
+            if (mounted) {
+              setState(() {
+                _isInterstitialLoaded = false;
+                _isLoadingInterstitial = false;
+              });
+            }
           },
         );
       } catch (e) {
         print('Error loading interstitial ad: $e');
-        setState(() => _isInterstitialLoaded = false);
+        if (mounted) {
+          setState(() {
+            _isInterstitialLoaded = false;
+            _isLoadingInterstitial = false;
+          });
+        }
       }
     });
   }
@@ -275,9 +303,20 @@ class _MyHomePageState extends State<MyHomePage> with WidgetsBindingObserver {
   }
 
   void _loadRewardedAd() {
+    setState(() {
+      _isLoadingRewarded = true;
+    });
+
     _initUnityAds().then((_) {
       if (!_isUnityAdsInitialized) {
         print('Unity Ads not initialized yet. Trying to initialize...');
+        Future.delayed(const Duration(seconds: 2), () {
+          if (mounted) {
+            setState(() {
+              _isLoadingRewarded = false;
+            });
+          }
+        });
         return;
       }
 
@@ -285,17 +324,32 @@ class _MyHomePageState extends State<MyHomePage> with WidgetsBindingObserver {
         UnityAds.load(
           placementId: 'Rewarded_iOS',
           onComplete: (placementId) {
-            setState(() => _isRewardedLoaded = true);
-            print('Rewarded Ad loaded with Game ID: $_currentGameId');
+            if (mounted) {
+              setState(() {
+                _isRewardedLoaded = true;
+                _isLoadingRewarded = false;
+              });
+              print('Rewarded Ad loaded with Game ID: $_currentGameId');
+            }
           },
           onFailed: (placementId, error, message) {
             print('Load Failed: $message');
-            setState(() => _isRewardedLoaded = false);
+            if (mounted) {
+              setState(() {
+                _isRewardedLoaded = false;
+                _isLoadingRewarded = false;
+              });
+            }
           },
         );
       } catch (e) {
         print('Error loading rewarded ad: $e');
-        setState(() => _isRewardedLoaded = false);
+        if (mounted) {
+          setState(() {
+            _isRewardedLoaded = false;
+            _isLoadingRewarded = false;
+          });
+        }
       }
     });
   }
@@ -530,22 +584,62 @@ class _MyHomePageState extends State<MyHomePage> with WidgetsBindingObserver {
                 margin: const EdgeInsets.only(bottom: 20),
                 child: ElevatedButton(
                   onPressed:
-                      !_isRewardedLoaded ? _loadRewardedAd : _showRewardedAd,
+                      _isLoadingRewarded
+                          ? null
+                          : (!_isRewardedLoaded
+                              ? _loadRewardedAd
+                              : _showRewardedAd),
                   style: ElevatedButton.styleFrom(
                     padding: const EdgeInsets.symmetric(
                       horizontal: 30,
                       vertical: 15,
                     ),
                     backgroundColor:
-                        _isRewardedLoaded ? Colors.blue : Colors.grey,
+                        _isRewardedLoaded
+                            ? Colors.blue
+                            : (_isLoadingRewarded
+                                ? Colors.grey[400]
+                                : Colors.grey),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(30),
                     ),
+                    disabledBackgroundColor: Colors.grey[400],
+                    disabledForegroundColor: Colors.white,
                   ),
-                  child: Text(
-                    _isRewardedLoaded ? 'Show Rewarded Ad' : 'Load Rewarded Ad',
-                    style: const TextStyle(fontSize: 18, color: Colors.white),
-                  ),
+                  child:
+                      _isLoadingRewarded
+                          ? Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              SizedBox(
+                                width: 20,
+                                height: 20,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  valueColor: AlwaysStoppedAnimation<Color>(
+                                    Colors.white,
+                                  ),
+                                ),
+                              ),
+                              SizedBox(width: 10),
+                              Text(
+                                'Loading Ad...',
+                                style: TextStyle(
+                                  fontSize: 16,
+                                  color: Colors.white,
+                                ),
+                              ),
+                            ],
+                          )
+                          : Text(
+                            _isRewardedLoaded
+                                ? 'Show Rewarded Ad'
+                                : 'Load Rewarded Ad',
+                            style: const TextStyle(
+                              fontSize: 18,
+                              color: Colors.white,
+                            ),
+                          ),
                 ),
               ),
               // Interstitial Ad Button Second
@@ -553,26 +647,62 @@ class _MyHomePageState extends State<MyHomePage> with WidgetsBindingObserver {
                 width: 250,
                 child: ElevatedButton(
                   onPressed:
-                      !_isInterstitialLoaded
-                          ? _loadInterstitialAd
-                          : _showInterstitialAd,
+                      _isLoadingInterstitial
+                          ? null
+                          : (!_isInterstitialLoaded
+                              ? _loadInterstitialAd
+                              : _showInterstitialAd),
                   style: ElevatedButton.styleFrom(
                     padding: const EdgeInsets.symmetric(
                       horizontal: 30,
                       vertical: 15,
                     ),
                     backgroundColor:
-                        _isInterstitialLoaded ? Colors.blue : Colors.grey,
+                        _isInterstitialLoaded
+                            ? Colors.blue
+                            : (_isLoadingInterstitial
+                                ? Colors.grey[400]
+                                : Colors.grey),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(30),
                     ),
+                    disabledBackgroundColor: Colors.grey[400],
+                    disabledForegroundColor: Colors.white,
                   ),
-                  child: Text(
-                    _isInterstitialLoaded
-                        ? 'Show Interstitial Ad'
-                        : 'Load Interstitial Ad',
-                    style: const TextStyle(fontSize: 18, color: Colors.white),
-                  ),
+                  child:
+                      _isLoadingInterstitial
+                          ? Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              SizedBox(
+                                width: 20,
+                                height: 20,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  valueColor: AlwaysStoppedAnimation<Color>(
+                                    Colors.white,
+                                  ),
+                                ),
+                              ),
+                              SizedBox(width: 10),
+                              Text(
+                                'Loading Ad...',
+                                style: TextStyle(
+                                  fontSize: 16,
+                                  color: Colors.white,
+                                ),
+                              ),
+                            ],
+                          )
+                          : Text(
+                            _isInterstitialLoaded
+                                ? 'Show Interstitial Ad'
+                                : 'Load Interstitial Ad',
+                            style: const TextStyle(
+                              fontSize: 18,
+                              color: Colors.white,
+                            ),
+                          ),
                 ),
               ),
               const SizedBox(height: 20),
