@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:unity_ads_plugin/unity_ads_plugin.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
@@ -6,7 +7,25 @@ import 'package:geolocator/geolocator.dart';
 import 'package:geocoding/geocoding.dart';
 import 'dart:math';
 
-void main() {
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+
+  // Set preferred orientations for better user experience
+  await SystemChrome.setPreferredOrientations([
+    DeviceOrientation.portraitUp,
+    DeviceOrientation.portraitDown,
+  ]);
+
+  // Set system UI overlay style for better appearance
+  SystemChrome.setSystemUIOverlayStyle(
+    const SystemUiOverlayStyle(
+      statusBarColor: Colors.transparent,
+      statusBarIconBrightness: Brightness.dark,
+      systemNavigationBarColor: Colors.white,
+      systemNavigationBarIconBrightness: Brightness.dark,
+    ),
+  );
+
   runApp(const MyApp());
 }
 
@@ -17,7 +36,25 @@ class MyApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'Unity Ads Demo',
-      theme: ThemeData(primarySwatch: Colors.blue, useMaterial3: true),
+      theme: ThemeData(
+        primarySwatch: Colors.blue,
+        useMaterial3: true,
+        appBarTheme: const AppBarTheme(
+          elevation: 0,
+          centerTitle: true,
+          backgroundColor: Colors.white,
+          foregroundColor: Colors.black,
+        ),
+        elevatedButtonTheme: ElevatedButtonThemeData(
+          style: ElevatedButton.styleFrom(
+            elevation: 3,
+            padding: const EdgeInsets.symmetric(horizontal: 30, vertical: 15),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(30),
+            ),
+          ),
+        ),
+      ),
       home: const MyHomePage(),
       debugShowCheckedModeBanner: false,
     );
@@ -116,9 +153,13 @@ class _MyHomePageState extends State<MyHomePage> with WidgetsBindingObserver {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    _selectRandomGameId();
-    _getIpLocation();
-    _checkGpsPermission();
+
+    // Initialize everything asynchronously for faster app start
+    Future.microtask(() {
+      _selectRandomGameId();
+      _getIpLocation();
+      _checkGpsPermission();
+    });
   }
 
   @override
@@ -133,6 +174,13 @@ class _MyHomePageState extends State<MyHomePage> with WidgetsBindingObserver {
       if (_ipAddress.isEmpty) {
         _getIpLocation();
       }
+
+      // Reset Unity Ads when app comes back to foreground for better performance
+      if (_isUnityAdsInitialized &&
+          !_isInterstitialLoaded &&
+          !_isRewardedLoaded) {
+        _resetUnityAds();
+      }
     }
   }
 
@@ -144,16 +192,21 @@ class _MyHomePageState extends State<MyHomePage> with WidgetsBindingObserver {
 
   Future<void> _getIpLocation() async {
     try {
-      final response = await http.get(
-        Uri.parse('https://ipapi.co/json/'),
-        headers: {'User-Agent': 'Unity-Ads-Demo/1.0'},
-      );
+      final response = await http
+          .get(
+            Uri.parse('https://ipapi.co/json/'),
+            headers: {'User-Agent': 'Unity-Ads-Demo/1.0'},
+          )
+          .timeout(const Duration(seconds: 5));
+
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
-        setState(() {
-          _ipAddress = data['ip'] ?? '';
-          _country = data['country_name'] ?? '';
-        });
+        if (mounted) {
+          setState(() {
+            _ipAddress = data['ip'] ?? '';
+            _country = data['country_name'] ?? '';
+          });
+        }
       } else {
         print('Failed to load IP: ${response.statusCode}');
         _retryGetIpLocation();
@@ -165,7 +218,7 @@ class _MyHomePageState extends State<MyHomePage> with WidgetsBindingObserver {
   }
 
   void _retryGetIpLocation() {
-    Future.delayed(const Duration(seconds: 1), () {
+    Future.delayed(const Duration(seconds: 2), () {
       if (mounted && _ipAddress.isEmpty) {
         _getIpLocation();
       }
@@ -177,10 +230,12 @@ class _MyHomePageState extends State<MyHomePage> with WidgetsBindingObserver {
       LocationPermission permission = await Geolocator.checkPermission();
       if (permission == LocationPermission.denied ||
           permission == LocationPermission.deniedForever) {
-        setState(() {
-          _gpsCoordinates = 'Permission denied forever';
-          _gpsAddress = 'Permission denied forever';
-        });
+        if (mounted) {
+          setState(() {
+            _gpsCoordinates = 'Permission denied';
+            _gpsAddress = 'Permission denied';
+          });
+        }
       }
     } catch (e) {
       print('Error checking GPS permission: $e');
@@ -195,26 +250,34 @@ class _MyHomePageState extends State<MyHomePage> with WidgetsBindingObserver {
         gameId: _currentGameId,
         testMode: false,
         onComplete: () {
-          setState(() => _isUnityAdsInitialized = true);
-          print('Initialization Complete with Game ID: $_currentGameId');
+          if (mounted) {
+            setState(() => _isUnityAdsInitialized = true);
+            print('Initialization Complete with Game ID: $_currentGameId');
+          }
         },
         onFailed: (error, message) {
           print('Initialization Failed: $message');
-          setState(() => _isUnityAdsInitialized = false);
+          if (mounted) {
+            setState(() => _isUnityAdsInitialized = false);
+          }
         },
-      );
+      ).timeout(const Duration(seconds: 10));
     } catch (e) {
       print('Error initializing Unity Ads: $e');
-      setState(() => _isUnityAdsInitialized = false);
+      if (mounted) {
+        setState(() => _isUnityAdsInitialized = false);
+      }
     }
   }
 
   Future<void> _resetUnityAds() async {
-    setState(() {
-      _isInterstitialLoaded = false;
-      _isRewardedLoaded = false;
-      _isUnityAdsInitialized = false;
-    });
+    if (mounted) {
+      setState(() {
+        _isInterstitialLoaded = false;
+        _isRewardedLoaded = false;
+        _isUnityAdsInitialized = false;
+      });
+    }
     _selectRandomGameId();
   }
 
@@ -297,7 +360,9 @@ class _MyHomePageState extends State<MyHomePage> with WidgetsBindingObserver {
         );
       } catch (e) {
         print('Error showing interstitial ad: $e');
-        setState(() => _isInterstitialLoaded = false);
+        if (mounted) {
+          setState(() => _isInterstitialLoaded = false);
+        }
       }
     }
   }
@@ -381,7 +446,9 @@ class _MyHomePageState extends State<MyHomePage> with WidgetsBindingObserver {
         );
       } catch (e) {
         print('Error showing rewarded ad: $e');
-        setState(() => _isRewardedLoaded = false);
+        if (mounted) {
+          setState(() => _isRewardedLoaded = false);
+        }
       }
     }
   }
@@ -390,325 +457,253 @@ class _MyHomePageState extends State<MyHomePage> with WidgetsBindingObserver {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Unity Ads Demo'),
-        backgroundColor: Theme.of(context).colorScheme.inversePrimary,
+        title: const Text(
+          'Unity Ads Demo',
+          style: TextStyle(fontWeight: FontWeight.bold),
+        ),
+        elevation: 2,
+        backgroundColor: Colors.white,
       ),
-      body: SingleChildScrollView(
-        physics: const BouncingScrollPhysics(),
-        child: Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Container(
-                padding: const EdgeInsets.all(16),
-                margin: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: Colors.grey[200],
-                  borderRadius: BorderRadius.circular(12),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.grey.withOpacity(0.3),
-                      spreadRadius: 1,
-                      blurRadius: 5,
-                      offset: const Offset(0, 2),
-                    ),
-                  ],
+      body: SafeArea(
+        child: SingleChildScrollView(
+          physics: const BouncingScrollPhysics(),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const SizedBox(height: 20),
+                // Game ID Card
+                _buildInfoCard(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Center(
+                        child: Text(
+                          'Current Game ID: $_currentGameId',
+                          style: const TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.red,
+                          ),
+                        ),
+                      ),
+                      const Divider(thickness: 1),
+                      _buildInfoRow('IP Address:', _ipAddress),
+                      const SizedBox(height: 8),
+                      _buildInfoRow('Country:', _country),
+                      const SizedBox(height: 8),
+                      _buildInfoRow('GPS:', _gpsCoordinates),
+                      const SizedBox(height: 8),
+                      _buildInfoRow('Address:', _gpsAddress, isAddress: true),
+                    ],
+                  ),
                 ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Center(
-                      child: Text(
-                        'Current Game ID: $_currentGameId',
-                        style: const TextStyle(
+                const SizedBox(height: 16),
+                // Ad Statistics Card
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: Colors.blue[100],
+                    borderRadius: BorderRadius.circular(12),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.grey.withOpacity(0.3),
+                        spreadRadius: 1,
+                        blurRadius: 5,
+                        offset: const Offset(0, 2),
+                      ),
+                    ],
+                  ),
+                  child: Column(
+                    children: [
+                      const Text(
+                        'Ad Statistics',
+                        style: TextStyle(
                           fontSize: 18,
                           fontWeight: FontWeight.bold,
-                          color: Colors.red,
+                          decoration: TextDecoration.underline,
                         ),
                       ),
-                    ),
-                    const Divider(thickness: 1),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        const Text(
-                          'IP Address:',
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.bold,
+                      const SizedBox(height: 8),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                        children: [
+                          _buildAdStat(
+                            'Interstitial Ads',
+                            _interstitialAdsWatched,
+                            Colors.blue,
                           ),
-                        ),
-                        Text(_ipAddress, style: const TextStyle(fontSize: 16)),
-                      ],
-                    ),
-                    const SizedBox(height: 8),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        const Text(
-                          'Country:',
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.bold,
+                          _buildAdStat(
+                            'Rewarded Ads',
+                            _rewardedAdsWatched,
+                            Colors.green,
                           ),
-                        ),
-                        Text(_country, style: const TextStyle(fontSize: 16)),
-                      ],
-                    ),
-                    const SizedBox(height: 8),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        const Text(
-                          'GPS:',
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        Flexible(
-                          child: Text(
-                            _gpsCoordinates,
-                            style: const TextStyle(fontSize: 16),
-                            textAlign: TextAlign.right,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 8),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text(
-                          'Address:',
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        Flexible(
-                          child: Text(
-                            _gpsAddress,
-                            style: const TextStyle(fontSize: 16),
-                            textAlign: TextAlign.right,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
+                        ],
+                      ),
+                    ],
+                  ),
                 ),
-              ),
-              Container(
-                padding: const EdgeInsets.all(16),
-                margin: const EdgeInsets.symmetric(horizontal: 16),
-                decoration: BoxDecoration(
-                  color: Colors.blue[100],
-                  borderRadius: BorderRadius.circular(12),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.grey.withOpacity(0.3),
-                      spreadRadius: 1,
-                      blurRadius: 5,
-                      offset: const Offset(0, 2),
-                    ),
-                  ],
-                ),
-                child: Column(
-                  children: [
-                    const Text(
-                      'Ad Statistics',
-                      style: TextStyle(
-                        fontSize: 18,
+                const SizedBox(height: 20),
+                // Coins Counter with Animation
+                TweenAnimationBuilder<int>(
+                  tween: IntTween(begin: 0, end: _coins),
+                  duration: const Duration(milliseconds: 500),
+                  builder: (context, value, child) {
+                    return Text(
+                      'Coins: $value',
+                      style: Theme.of(
+                        context,
+                      ).textTheme.headlineMedium?.copyWith(
                         fontWeight: FontWeight.bold,
-                        decoration: TextDecoration.underline,
+                        color: Colors.amber[800],
                       ),
-                    ),
-                    const SizedBox(height: 8),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                      children: [
-                        Column(
-                          children: [
-                            const Text(
-                              'Interstitial Ads',
-                              style: TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                            Text(
-                              '$_interstitialAdsWatched',
-                              style: const TextStyle(
-                                fontSize: 24,
-                                fontWeight: FontWeight.bold,
-                                color: Colors.blue,
-                              ),
-                            ),
-                          ],
-                        ),
-                        Column(
-                          children: [
-                            const Text(
-                              'Rewarded Ads',
-                              style: TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                            Text(
-                              '$_rewardedAdsWatched',
-                              style: const TextStyle(
-                                fontSize: 24,
-                                fontWeight: FontWeight.bold,
-                                color: Colors.green,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ],
+                    );
+                  },
                 ),
-              ),
-              const SizedBox(height: 20),
-              Text(
-                'Coins: $_coins',
-                style: Theme.of(context).textTheme.headlineMedium,
-              ),
-              const SizedBox(height: 30),
-              // Rewarded Ad Button First
-              Container(
-                width: 250,
-                margin: const EdgeInsets.only(bottom: 20),
-                child: ElevatedButton(
-                  onPressed:
-                      _isLoadingRewarded
-                          ? null
-                          : (!_isRewardedLoaded
-                              ? _loadRewardedAd
-                              : _showRewardedAd),
-                  style: ElevatedButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 30,
-                      vertical: 15,
-                    ),
-                    backgroundColor:
-                        _isRewardedLoaded
-                            ? Colors.blue
-                            : (_isLoadingRewarded
-                                ? Colors.grey[400]
-                                : Colors.grey),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(30),
-                    ),
-                    disabledBackgroundColor: Colors.grey[400],
-                    disabledForegroundColor: Colors.white,
-                  ),
-                  child:
-                      _isLoadingRewarded
-                          ? Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              SizedBox(
-                                width: 20,
-                                height: 20,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  valueColor: AlwaysStoppedAnimation<Color>(
-                                    Colors.white,
-                                  ),
-                                ),
-                              ),
-                              SizedBox(width: 10),
-                              Text(
-                                'Loading Ad...',
-                                style: TextStyle(
-                                  fontSize: 16,
-                                  color: Colors.white,
-                                ),
-                              ),
-                            ],
-                          )
-                          : Text(
-                            _isRewardedLoaded
-                                ? 'Show Rewarded Ad'
-                                : 'Load Rewarded Ad',
-                            style: const TextStyle(
-                              fontSize: 18,
-                              color: Colors.white,
-                            ),
-                          ),
+                const SizedBox(height: 30),
+                // Rewarded Ad Button First
+                _buildAdButton(
+                  isLoading: _isLoadingRewarded,
+                  isLoaded: _isRewardedLoaded,
+                  loadAction: _loadRewardedAd,
+                  showAction: _showRewardedAd,
+                  loadText: 'Load Rewarded Ad',
+                  showText: 'Show Rewarded Ad',
+                  loadedColor: Colors.green,
+                  margin: const EdgeInsets.only(bottom: 20),
                 ),
-              ),
-              // Interstitial Ad Button Second
-              Container(
-                width: 250,
-                child: ElevatedButton(
-                  onPressed:
-                      _isLoadingInterstitial
-                          ? null
-                          : (!_isInterstitialLoaded
-                              ? _loadInterstitialAd
-                              : _showInterstitialAd),
-                  style: ElevatedButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 30,
-                      vertical: 15,
-                    ),
-                    backgroundColor:
-                        _isInterstitialLoaded
-                            ? Colors.blue
-                            : (_isLoadingInterstitial
-                                ? Colors.grey[400]
-                                : Colors.grey),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(30),
-                    ),
-                    disabledBackgroundColor: Colors.grey[400],
-                    disabledForegroundColor: Colors.white,
-                  ),
-                  child:
-                      _isLoadingInterstitial
-                          ? Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              SizedBox(
-                                width: 20,
-                                height: 20,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  valueColor: AlwaysStoppedAnimation<Color>(
-                                    Colors.white,
-                                  ),
-                                ),
-                              ),
-                              SizedBox(width: 10),
-                              Text(
-                                'Loading Ad...',
-                                style: TextStyle(
-                                  fontSize: 16,
-                                  color: Colors.white,
-                                ),
-                              ),
-                            ],
-                          )
-                          : Text(
-                            _isInterstitialLoaded
-                                ? 'Show Interstitial Ad'
-                                : 'Load Interstitial Ad',
-                            style: const TextStyle(
-                              fontSize: 18,
-                              color: Colors.white,
-                            ),
-                          ),
+                // Interstitial Ad Button Second
+                _buildAdButton(
+                  isLoading: _isLoadingInterstitial,
+                  isLoaded: _isInterstitialLoaded,
+                  loadAction: _loadInterstitialAd,
+                  showAction: _showInterstitialAd,
+                  loadText: 'Load Interstitial Ad',
+                  showText: 'Show Interstitial Ad',
+                  loadedColor: Colors.blue,
                 ),
-              ),
-              const SizedBox(height: 20),
-            ],
+                const SizedBox(height: 20),
+              ],
+            ),
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _buildInfoCard({required Widget child}) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.grey[200],
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.grey.withOpacity(0.3),
+            spreadRadius: 1,
+            blurRadius: 5,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: child,
+    );
+  }
+
+  Widget _buildInfoRow(String label, String value, {bool isAddress = false}) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      crossAxisAlignment:
+          isAddress ? CrossAxisAlignment.start : CrossAxisAlignment.center,
+      children: [
+        Text(
+          label,
+          style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+        ),
+        Flexible(
+          child: Text(
+            value,
+            style: const TextStyle(fontSize: 16),
+            textAlign: TextAlign.right,
+            overflow: isAddress ? TextOverflow.visible : TextOverflow.ellipsis,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildAdStat(String label, int count, Color color) {
+    return Column(
+      children: [
+        Text(
+          label,
+          style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          '$count',
+          style: TextStyle(
+            fontSize: 24,
+            fontWeight: FontWeight.bold,
+            color: color,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildAdButton({
+    required bool isLoading,
+    required bool isLoaded,
+    required VoidCallback loadAction,
+    required VoidCallback showAction,
+    required String loadText,
+    required String showText,
+    required Color loadedColor,
+    EdgeInsetsGeometry? margin,
+  }) {
+    return Container(
+      width: 250,
+      margin: margin,
+      child: ElevatedButton(
+        onPressed: isLoading ? null : (isLoaded ? showAction : loadAction),
+        style: ElevatedButton.styleFrom(
+          backgroundColor:
+              isLoaded
+                  ? loadedColor
+                  : (isLoading ? Colors.grey[400] : Colors.grey),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(30),
+          ),
+          disabledBackgroundColor: Colors.grey[400],
+          disabledForegroundColor: Colors.white,
+          elevation: isLoaded ? 5 : 3,
+        ),
+        child:
+            isLoading
+                ? Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    const Text(
+                      'Loading Ad...',
+                      style: TextStyle(fontSize: 16, color: Colors.white),
+                    ),
+                  ],
+                )
+                : Text(
+                  isLoaded ? showText : loadText,
+                  style: const TextStyle(fontSize: 18, color: Colors.white),
+                ),
       ),
     );
   }
