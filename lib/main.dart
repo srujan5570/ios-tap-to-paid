@@ -176,10 +176,8 @@ class _MyHomePageState extends State<MyHomePage> with WidgetsBindingObserver {
       }
 
       // Reset Unity Ads when app comes back to foreground for better performance
-      if (_isUnityAdsInitialized &&
-          !_isInterstitialLoaded &&
-          !_isRewardedLoaded) {
-        _resetUnityAds();
+      if (!_isLoadingInterstitial && !_isLoadingRewarded) {
+        _forceResetUnityAds();
       }
     }
   }
@@ -188,6 +186,7 @@ class _MyHomePageState extends State<MyHomePage> with WidgetsBindingObserver {
     setState(() {
       _currentGameId = _gameIds[_random.nextInt(_gameIds.length)];
     });
+    print('Selected Game ID: $_currentGameId');
   }
 
   Future<void> _getIpLocation() async {
@@ -242,8 +241,36 @@ class _MyHomePageState extends State<MyHomePage> with WidgetsBindingObserver {
     }
   }
 
+  // Method to properly clean up Unity Ads initialization
+  Future<void> _cleanupUnityAds() async {
+    try {
+      // Set all ad loading and loaded flags to false
+      if (mounted) {
+        setState(() {
+          _isInterstitialLoaded = false;
+          _isRewardedLoaded = false;
+          _isUnityAdsInitialized = false;
+        });
+      }
+
+      // Wait for any potential pending operations to complete
+      await Future.delayed(const Duration(milliseconds: 100));
+    } catch (e) {
+      print('Error cleaning up Unity Ads: $e');
+    }
+  }
+
+  // Method to force reinitialize Unity Ads with new game ID
+  Future<void> _forceResetUnityAds() async {
+    await _cleanupUnityAds();
+    _selectRandomGameId(); // Get a new random game ID
+    print('Force reset Unity Ads with new Game ID: $_currentGameId');
+  }
+
   Future<void> _initUnityAds() async {
     if (_isUnityAdsInitialized) return;
+
+    print('Initializing Unity Ads with Game ID: $_currentGameId');
 
     try {
       await UnityAds.init(
@@ -260,6 +287,12 @@ class _MyHomePageState extends State<MyHomePage> with WidgetsBindingObserver {
           if (mounted) {
             setState(() => _isUnityAdsInitialized = false);
           }
+          // Retry with a different game ID after failure
+          Future.delayed(const Duration(seconds: 2), () {
+            if (mounted) {
+              _forceResetUnityAds();
+            }
+          });
         },
       ).timeout(const Duration(seconds: 10));
     } catch (e) {
@@ -267,17 +300,17 @@ class _MyHomePageState extends State<MyHomePage> with WidgetsBindingObserver {
       if (mounted) {
         setState(() => _isUnityAdsInitialized = false);
       }
+      // Retry with a different game ID after exception
+      Future.delayed(const Duration(seconds: 2), () {
+        if (mounted) {
+          _forceResetUnityAds();
+        }
+      });
     }
   }
 
   Future<void> _resetUnityAds() async {
-    if (mounted) {
-      setState(() {
-        _isInterstitialLoaded = false;
-        _isRewardedLoaded = false;
-        _isUnityAdsInitialized = false;
-      });
-    }
+    await _cleanupUnityAds();
     _selectRandomGameId();
   }
 
@@ -286,59 +319,65 @@ class _MyHomePageState extends State<MyHomePage> with WidgetsBindingObserver {
       _isLoadingInterstitial = true;
     });
 
-    _initUnityAds().then((_) {
-      if (!_isUnityAdsInitialized) {
-        print('Unity Ads not initialized yet. Trying to initialize...');
-        Future.delayed(const Duration(seconds: 2), () {
+    // Always reinitialize Unity Ads with current game ID before loading
+    _cleanupUnityAds().then((_) {
+      _initUnityAds().then((_) {
+        if (!_isUnityAdsInitialized) {
+          print('Unity Ads not initialized yet. Trying to initialize...');
+          Future.delayed(const Duration(seconds: 2), () {
+            if (mounted) {
+              setState(() {
+                _isLoadingInterstitial = false;
+              });
+            }
+          });
+          return;
+        }
+
+        try {
+          print('Loading Interstitial Ad with Game ID: $_currentGameId');
+          UnityAds.load(
+            placementId: 'Interstitial_iOS',
+            onComplete: (placementId) {
+              if (mounted) {
+                setState(() {
+                  _isInterstitialLoaded = true;
+                  _isLoadingInterstitial = false;
+                });
+                print('Interstitial Ad loaded with Game ID: $_currentGameId');
+              }
+            },
+            onFailed: (placementId, error, message) {
+              print('Load Failed: $message');
+              if (mounted) {
+                setState(() {
+                  _isInterstitialLoaded = false;
+                  _isLoadingInterstitial = false;
+                });
+              }
+            },
+          );
+        } catch (e) {
+          print('Error loading interstitial ad: $e');
           if (mounted) {
             setState(() {
+              _isInterstitialLoaded = false;
               _isLoadingInterstitial = false;
             });
           }
-        });
-        return;
-      }
-
-      try {
-        UnityAds.load(
-          placementId: 'Interstitial_iOS',
-          onComplete: (placementId) {
-            if (mounted) {
-              setState(() {
-                _isInterstitialLoaded = true;
-                _isLoadingInterstitial = false;
-              });
-              print('Interstitial Ad loaded with Game ID: $_currentGameId');
-            }
-          },
-          onFailed: (placementId, error, message) {
-            print('Load Failed: $message');
-            if (mounted) {
-              setState(() {
-                _isInterstitialLoaded = false;
-                _isLoadingInterstitial = false;
-              });
-            }
-          },
-        );
-      } catch (e) {
-        print('Error loading interstitial ad: $e');
-        if (mounted) {
-          setState(() {
-            _isInterstitialLoaded = false;
-            _isLoadingInterstitial = false;
-          });
         }
-      }
+      });
     });
   }
 
   void _showInterstitialAd() {
     if (_isInterstitialLoaded) {
       try {
+        print('Showing Interstitial Ad with Game ID: $_currentGameId');
         UnityAds.showVideoAd(
           placementId: 'Interstitial_iOS',
           onComplete: (placementId) async {
+            print('Interstitial Ad completed with Game ID: $_currentGameId');
             if (mounted) {
               setState(() {
                 _isInterstitialLoaded = false;
@@ -355,8 +394,12 @@ class _MyHomePageState extends State<MyHomePage> with WidgetsBindingObserver {
               _resetUnityAds();
             }
           },
-          onStart: (placementId) => print('Ad Started'),
-          onClick: (placementId) => print('Ad Clicked'),
+          onStart:
+              (placementId) =>
+                  print('Ad Started with Game ID: $_currentGameId'),
+          onClick:
+              (placementId) =>
+                  print('Ad Clicked with Game ID: $_currentGameId'),
         );
       } catch (e) {
         print('Error showing interstitial ad: $e');
@@ -372,59 +415,65 @@ class _MyHomePageState extends State<MyHomePage> with WidgetsBindingObserver {
       _isLoadingRewarded = true;
     });
 
-    _initUnityAds().then((_) {
-      if (!_isUnityAdsInitialized) {
-        print('Unity Ads not initialized yet. Trying to initialize...');
-        Future.delayed(const Duration(seconds: 2), () {
+    // Always reinitialize Unity Ads with current game ID before loading
+    _cleanupUnityAds().then((_) {
+      _initUnityAds().then((_) {
+        if (!_isUnityAdsInitialized) {
+          print('Unity Ads not initialized yet. Trying to initialize...');
+          Future.delayed(const Duration(seconds: 2), () {
+            if (mounted) {
+              setState(() {
+                _isLoadingRewarded = false;
+              });
+            }
+          });
+          return;
+        }
+
+        try {
+          print('Loading Rewarded Ad with Game ID: $_currentGameId');
+          UnityAds.load(
+            placementId: 'Rewarded_iOS',
+            onComplete: (placementId) {
+              if (mounted) {
+                setState(() {
+                  _isRewardedLoaded = true;
+                  _isLoadingRewarded = false;
+                });
+                print('Rewarded Ad loaded with Game ID: $_currentGameId');
+              }
+            },
+            onFailed: (placementId, error, message) {
+              print('Load Failed: $message');
+              if (mounted) {
+                setState(() {
+                  _isRewardedLoaded = false;
+                  _isLoadingRewarded = false;
+                });
+              }
+            },
+          );
+        } catch (e) {
+          print('Error loading rewarded ad: $e');
           if (mounted) {
             setState(() {
+              _isRewardedLoaded = false;
               _isLoadingRewarded = false;
             });
           }
-        });
-        return;
-      }
-
-      try {
-        UnityAds.load(
-          placementId: 'Rewarded_iOS',
-          onComplete: (placementId) {
-            if (mounted) {
-              setState(() {
-                _isRewardedLoaded = true;
-                _isLoadingRewarded = false;
-              });
-              print('Rewarded Ad loaded with Game ID: $_currentGameId');
-            }
-          },
-          onFailed: (placementId, error, message) {
-            print('Load Failed: $message');
-            if (mounted) {
-              setState(() {
-                _isRewardedLoaded = false;
-                _isLoadingRewarded = false;
-              });
-            }
-          },
-        );
-      } catch (e) {
-        print('Error loading rewarded ad: $e');
-        if (mounted) {
-          setState(() {
-            _isRewardedLoaded = false;
-            _isLoadingRewarded = false;
-          });
         }
-      }
+      });
     });
   }
 
   void _showRewardedAd() {
     if (_isRewardedLoaded) {
       try {
+        print('Showing Rewarded Ad with Game ID: $_currentGameId');
         UnityAds.showVideoAd(
           placementId: 'Rewarded_iOS',
           onComplete: (placementId) async {
+            print('Rewarded Ad completed with Game ID: $_currentGameId');
             if (mounted) {
               setState(() {
                 _isRewardedLoaded = false;
@@ -441,8 +490,12 @@ class _MyHomePageState extends State<MyHomePage> with WidgetsBindingObserver {
               _resetUnityAds();
             }
           },
-          onStart: (placementId) => print('Ad Started'),
-          onClick: (placementId) => print('Ad Clicked'),
+          onStart:
+              (placementId) =>
+                  print('Ad Started with Game ID: $_currentGameId'),
+          onClick:
+              (placementId) =>
+                  print('Ad Clicked with Game ID: $_currentGameId'),
         );
       } catch (e) {
         print('Error showing rewarded ad: $e');

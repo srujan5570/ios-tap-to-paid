@@ -3,7 +3,7 @@ name: iOS-ipa-build
 on:
   workflow_dispatch:
   push:
-    branches: [ master ]
+    branches: [ master, main, feature/* ]
 
 jobs:
   build-ios:
@@ -19,6 +19,9 @@ jobs:
       
       - name: Install dependencies
         run: flutter pub get
+      
+      - name: Check Flutter version
+        run: flutter --version
       
       - name: Update CocoaPods repos
         run: pod repo update
@@ -53,7 +56,12 @@ jobs:
           release_name: Release v1.0.${{ github.run_number }}
           draft: false
           prerelease: false
-          body: "Unity Ads Demo App Release"
+          body: |
+            Unity Ads Demo App Release
+            - Enhanced Unity Ads initialization for each new game ID
+            - Added loading indicators with proper state handling
+            - Improved UI performance and animations
+            - Fixed ad counter tracking issues
 
       - name: Upload IPA to Release
         uses: actions/upload-release-asset@v1
