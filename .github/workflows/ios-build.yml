@@ -20,9 +20,6 @@ jobs:
       - name: Install dependencies
         run: flutter pub get
       
-      - name: Check Flutter version
-        run: flutter --version
-      
       - name: Update CocoaPods repos
         run: pod repo update
         working-directory: ios
@@ -58,10 +55,13 @@ jobs:
           prerelease: false
           body: |
             Unity Ads Demo App Release
-            - Enhanced Unity Ads initialization for each new game ID
-            - Added loading indicators with proper state handling
-            - Improved UI performance and animations
-            - Fixed ad counter tracking issues
+            
+            Changes in this build:
+            - Proper Unity Ads SDK re-initialization with new game ID after each ad
+            - Added loading indicators when ads are loading
+            - Improved UI performance and layout
+            - Enhanced error handling for network and ad operations
+            - Better debug logging for tracking ad loading and showing
 
       - name: Upload IPA to Release
         uses: actions/upload-release-asset@v1
